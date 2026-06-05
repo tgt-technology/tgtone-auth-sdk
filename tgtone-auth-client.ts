@@ -559,6 +559,7 @@ export class TGTAuthClient {
           try {
             await this.handleCallback();
             // handleCallback stores tokens + cleans URL — continue normal flow below
+            sessionStorage.removeItem('__oauth_exchange_lock');
           } catch (err: any) {
             this.log(`❌ OAuth callback falló: ${err?.message || err}${label}`);
             sessionStorage.removeItem('__oauth_exchange_lock');
