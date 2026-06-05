@@ -1065,9 +1065,6 @@ Posibles causas:
    * Stores code_verifier in sessionStorage (cleared on tab close).
    */
   async authorize(options?: { redirectUrl?: string }): Promise<void> {
-    // Limpiar flag stale de auth_popup_pending (por si quedó de una carga anterior)
-    sessionStorage.removeItem('auth_popup_pending');
-
     // clientId is derived from appKey in constructor, or set explicitly
     const clientId = this.config.clientId || this.config.appKey;
     const redirectUri = this.config.redirectUri
@@ -1100,45 +1097,7 @@ Posibles causas:
 
     const authorizeUrl = `${this.config.identityUrl}/login?${params}`;
 
-    // 🔥 Si está en iframe o popupAuthEnabled=true, abrir popup en vez de redirect
-    const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-    if (isIframe || this.config.popupAuthEnabled) {
-      const popup = window.open(authorizeUrl, 'tgtone-auth-popup',
-        'width=600,height=700,scrollbars=yes');
-      if (!popup) {
-        // Popup bloqueado — fallback a redirect directo (puede no funcionar en iframe)
-        this.log('⚠️ Popup bloqueado por el navegador — fallback a redirect directo');
-        window.location.href = authorizeUrl;
-        return;
-      }
-      // Marcar que hay un popup pendiente, así handleNoSession() no dispara error
-      sessionStorage.setItem('auth_popup_pending', 'true');
-      // Polling de localStorage para detectar cuando el popup completa la autenticación
-      // (más confiable que postMessage — ambos comparten el mismo origen)
-      const pollStorage = setInterval(() => {
-        const token = this.getStoredToken();
-        const complete = localStorage.getItem('auth_popup_complete');
-        if (token && complete) {
-          clearInterval(pollStorage);
-          clearInterval(checkClosed);
-          localStorage.removeItem('auth_popup_complete');
-          sessionStorage.removeItem('auth_popup_pending');
-          this.log('🔹 Auth completado en popup, recargando...');
-          window.location.reload();
-        }
-      }, 500);
-      // Cleanup si el usuario cierra el popup sin completar auth
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          sessionStorage.removeItem('auth_popup_pending');
-          this.log('🔹 Popup de autenticación cerrado sin completar');
-        }
-      }, 2000);
-      this.log('🔹 Popup de autenticación abierto (iframe detectado)');
-      return;
-    }
-
+    // 🔥 Si está en iframe, redirigir el iframe mismo a login (CSP ahora permite Lovable)
     this.log('🔄 Redirigiendo a identity...');
     window.location.href = authorizeUrl;
   }
@@ -1211,12 +1170,6 @@ Posibles causas:
 
     const session = this.buildSessionFromToken(token);
     this.config.onAuthSuccess?.(session);
-
-    // 🔥 Si estamos en un popup abierto por authorize(), avisar al opener vía localStorage y cerrar
-    if (typeof window !== 'undefined' && window.opener) {
-      localStorage.setItem('auth_popup_complete', Date.now().toString());
-      window.close();
-    }
 
     return session;
   }
@@ -2311,12 +2264,6 @@ Posibles causas:
   private handleNoSession(error?: AuthError): void {
     if (error && isRevocationError(error.code)) {
       this.handleSessionRevoked(error);
-      return;
-    }
-
-    // 🔥 Si hay un popup de autenticación pendiente, no mostrar error ni redirigir
-    if (!error && sessionStorage.getItem('auth_popup_pending') === 'true' && (this.config.clientId || this.config.appKey)) {
-      this.log('⏳ Popup de autenticación abierto, esperando...');
       return;
     }
 
