@@ -1113,14 +1113,20 @@ Posibles causas:
       }
       // Marcar que hay un popup pendiente, así handleNoSession() no dispara error
       sessionStorage.setItem('auth_popup_pending', 'true');
-      // Listener que espera el mensaje del popup y recarga la página
-      window.addEventListener('message', function onAuthComplete(event) {
-        if (event.data?.type === 'AUTH_COMPLETE' && event.data?.source === 'tgtone-auth-popup') {
-          window.removeEventListener('message', onAuthComplete);
+      // Polling de localStorage para detectar cuando el popup completa la autenticación
+      // (más confiable que postMessage — ambos comparten el mismo origen)
+      const pollStorage = setInterval(() => {
+        const token = this.getStoredToken();
+        const complete = localStorage.getItem('auth_popup_complete');
+        if (token && complete) {
+          clearInterval(pollStorage);
+          clearInterval(checkClosed);
+          localStorage.removeItem('auth_popup_complete');
           sessionStorage.removeItem('auth_popup_pending');
+          this.log('🔹 Auth completado en popup, recargando...');
           window.location.reload();
         }
-      });
+      }, 500);
       // Cleanup si el usuario cierra el popup sin completar auth
       const checkClosed = setInterval(() => {
         if (popup.closed) {
@@ -1206,12 +1212,9 @@ Posibles causas:
     const session = this.buildSessionFromToken(token);
     this.config.onAuthSuccess?.(session);
 
-    // 🔥 Si estamos en un popup abierto por authorize(), avisar al opener y cerrar
-    if (typeof window !== 'undefined' && window.opener && !window.opener.closed) {
-      window.opener.postMessage(
-        { type: 'AUTH_COMPLETE', source: 'tgtone-auth-popup' },
-        '*'
-      );
+    // 🔥 Si estamos en un popup abierto por authorize(), avisar al opener vía localStorage y cerrar
+    if (typeof window !== 'undefined' && window.opener) {
+      localStorage.setItem('auth_popup_complete', Date.now().toString());
       window.close();
     }
 
