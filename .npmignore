@@ -1,0 +1,31 @@
+# Archivos a ignorar al publicar en NPM
+
+# Source files (solo distribuir dist/)
+*.ts
+*.tsx
+!*.d.ts
+
+# Build config
+tsconfig.json
+
+# Docs (ya están en files[])
+# README.md se incluye explícitamente
+
+# Tests
+*.test.ts
+*.test.tsx
+__tests__/
+
+# IDE
+.vscode/
+.idea/
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Otros
+node_modules/
+.env
+.env.local
