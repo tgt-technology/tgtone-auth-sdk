@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.5.7 (2026-06-05)
+
+### Fixed
+
+- **Lock mechanism**: Changed OAuth exchange lock from `sessionStorage` to in-memory (`window.__oauth_exchange_lock`). If a page reloaded unexpectedly or redirected before the `try/catch` cleanup, the `sessionStorage` lock stayed stuck permanently, blocking all future OAuth callbacks. The in-memory lock dies naturally on page reload but still prevents React 18 StrictMode double-mounts from triggering duplicate token exchanges.
+
+## v3.5.6 (2026-06-05)
+
+### Fixed
+
+- **Lock cleanup on success**: The `__oauth_exchange_lock` was only cleaned in the `catch` block, never after a successful `handleCallback()`. A stale lock would block subsequent OAuth callbacks on later page loads.
+
+## v3.5.5 (2026-06-05)
+
+### Added
+
+- **Lovable auth bridge support**: `authorize()` now detects the `__lovable_sha` query parameter in `window.location.search` and appends it to the `redirect_uri`. This prevents Lovable's auth bridge from intercepting the OAuth redirect and losing the `?code=` parameter.
+
+## v3.5.4 (2026-06-05)
+
+### Added
+
+- **OAuth callback lock**: `_checkSessionCore` now uses a `sessionStorage` guard to prevent double-execution of `handleCallback()` when `_checkSessionCore` is invoked twice (e.g. React StrictMode dual-mount, or proxied fetch wrappers). The first caller proceeds with the token exchange; subsequent callers return the existing token from `localStorage` if available, otherwise `null`.
+
 ## v3.5.0 (2026-06-04)
 
 ### Added

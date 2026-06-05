@@ -1,6 +1,6 @@
 # API Reference - @tgtone/auth-sdk
 
-> Complete API reference for `@tgtone/auth-sdk` v1.4.4
+> Complete API reference for `@tgtone/auth-sdk` v3.5.7
 
 ---
 

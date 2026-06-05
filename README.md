@@ -156,7 +156,7 @@ Verifica sesión existente, valida JWT y hace request al backend. **Redirige aut
 
 **Uso:** Apps que requieren autenticación obligatoria (dashboards, consolas).
 
-#### `checkSessionSilent(validateWithServer = true): Promise<TGTSession | null>` 🆕
+#### `checkSessionSilent(validateWithServer = true): Promise<TGTSession | null>`
 Verifica sesión **SIN redirigir automáticamente**. Ideal para saber si el usuario está logeado sin forzar redirecciones.
 
 **Parámetros:**
@@ -393,7 +393,7 @@ Esto significa que un usuario eliminado o tenant suspendido **no puede hacer nin
 6. SDK valida token con `Authorization: Bearer ...`
 7. Retorna usuario
 
-### Flujo sin redirección automática (con `checkSessionSilent()`) 🆕
+### Flujo sin redirección automática (con `checkSessionSilent()`)
 
 1. Usuario visita tu landing page
 2. `checkSessionSilent()` verifica si hay token válido
@@ -497,14 +497,14 @@ const auth = new TGTAuthClient({
     // window.location.href = '/login';
   },
   
-  // 🆕 Manejar sesión revocada (usuario/tenant eliminado)
+  // Manejar sesión revocada (usuario/tenant eliminado)
   onSessionRevoked: (error) => {
     console.log('Sesión revocada:', error.code, error.message);
     // Opcional: analytics, logging, etc.
     // Si no se define, redirige automáticamente a /blocked
   },
   
-  // 🆕 Validar sesión cada 5 minutos (default)
+  // Validar sesión cada 5 minutos (default)
   heartbeatIntervalMs: 5 * 60 * 1000, // 5 minutos
   // Para deshabilitar: heartbeatIntervalMs: 0
   
@@ -514,13 +514,27 @@ const auth = new TGTAuthClient({
 
 ---
 
-## � Flujo SSO y Redirecciones
+## 🔐 Flujo de Autenticación
 
-El SDK está diseñado para manejar el flujo de Single Sign-On (SSO) de forma automática.
+El SDK soporta dos flujos: SSO tradicional y OAuth PKCE (recomendado para apps modernas).
+
+### Flujo SSO (legacy — token en URL)
 
 1. **Redirección al Identity**: Usa `auth.redirectToLogin()` para enviar al usuario al portal central de Identity.
 2. **Retorno con Token**: Tras el login exitoso, Identity redirige de vuelta a tu app con un parámetro `?token=...` en la URL.
 3. **Captura Automática**: Al llamar a `auth.checkSession()`, el SDK detecta el token en la URL, lo guarda en `localStorage` y limpia la URL.
+
+### Flujo OAuth PKCE (recomendado)
+
+Usado cuando configuras `appKey` o `clientId`. Más seguro que SSO legacy porque nunca expone el token en la URL.
+
+1. **Inicio**: Llama `auth.authorize({ redirectUrl: window.location.href })` o `auth.redirectToLogin(currentUrl)` (detecta automáticamente OAuth PKCE si `appKey` está configurado).
+2. **Redirección al login**: El SDK genera un `code_verifier` + `code_challenge`, los guarda en `sessionStorage`, y redirige al Identity con `?client_id=...&redirect_uri=...&code_challenge=...`.
+3. **Login en Identity**: Usuario ingresa credenciales en Identity.
+4. **Retorno con código**: Identity redirige a `redirect_uri?code=...&state=...`.
+5. **Intercambio automático**: `checkSession()` / `checkSessionSilent()` detectan `?code=...` en la URL y llaman `handleCallback()`, que intercambia el código por tokens via `POST /api/v1/auth/token`.
+6. **Almacenamiento**: Los tokens se guardan en `localStorage` y la URL se limpia.
+7. **Redirect post-login**: Si `authorize()` recibió un `redirectUrl`, éste se pasa como `state` y el AuthContext de la app puede usarlo para redirigir al usuario a la página original.
 
 ### ⚠️ Nota Crítica para SPAs (React/Vue/etc)
 
@@ -545,8 +559,8 @@ return <AppRouter />;
 
 ---
 
-**Versión:** 3.1.0  
-**Ultima actualizacion:** 2026-05-26
+**Versión:** 3.5.7  \
+**Ultima actualización:** 2026-06-05
 
 ## Imports
 
