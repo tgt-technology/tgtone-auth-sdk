@@ -1080,8 +1080,17 @@ Posibles causas:
   async authorize(options?: { redirectUrl?: string }): Promise<void> {
     // clientId is derived from appKey in constructor, or set explicitly
     const clientId = this.config.clientId || this.config.appKey;
-    const redirectUri = this.config.redirectUri
+    let redirectUri = this.config.redirectUri
       || (typeof window !== 'undefined' ? `${window.location.protocol}//${this.config.appDomain}` : undefined);
+
+    // Preserve Lovable auth marker so Lovable's auth bridge doesn't eat the OAuth code
+    if (typeof window !== 'undefined' && redirectUri) {
+      const lovableSha = new URLSearchParams(window.location.search).get('__lovable_sha');
+      if (lovableSha) {
+        const sep = redirectUri.includes('?') ? '&' : '?';
+        redirectUri += `${sep}__lovable_sha=${encodeURIComponent(lovableSha)}`;
+      }
+    }
 
     if (!clientId) {
       throw new Error('appKey or clientId is required for OAuth PKCE. Set appKey in TGTAuthConfig.');
