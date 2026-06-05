@@ -539,12 +539,13 @@ export class TGTAuthClient {
       this.handleClearAuthParam();
 
       // 0.6️⃣ OAuth PKCE callback detection — exchange ?code= for tokens
-      // Guard: prevent double-execution from React Strict Mode dual-mount
+      // Guard: prevent double-execution from React Strict Mode dual-mount.
+      // Using memory/window object instead of sessionStorage so the lock dies on page reload.
       if ((this.config.clientId || this.config.appKey) && (typeof window !== 'undefined')) {
         const callbackParams = new URLSearchParams(window.location.search);
         const oauthCode = callbackParams.get('code');
         if (oauthCode) {
-          if (sessionStorage.getItem('__oauth_exchange_lock')) {
+          if ((window as any).__oauth_exchange_lock) {
             this.log(`🔹 OAuth callback ya en progreso (lock activo) — ignorando${label}`);
             // Still return the token if first exchange already completed
             const token = this.getStoredToken();
@@ -554,15 +555,15 @@ export class TGTAuthClient {
             }
             return null;
           }
-          sessionStorage.setItem('__oauth_exchange_lock', '1');
+          (window as any).__oauth_exchange_lock = true;
           this.log(`🔹 OAuth callback detectado, intercambiando code...${label}`);
           try {
             await this.handleCallback();
             // handleCallback stores tokens + cleans URL — continue normal flow below
-            sessionStorage.removeItem('__oauth_exchange_lock');
+            (window as any).__oauth_exchange_lock = false;
           } catch (err: any) {
             this.log(`❌ OAuth callback falló: ${err?.message || err}${label}`);
-            sessionStorage.removeItem('__oauth_exchange_lock');
+            (window as any).__oauth_exchange_lock = false;
             if (!silent) this.handleNoSession();
             return null;
           }
