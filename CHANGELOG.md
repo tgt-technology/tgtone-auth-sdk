@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.5.10 (2026-06-06)
+
+### Fixed
+
+- **`handleNoSession` infinite loading**: Cuando `onAuthFailure` no redirigía (ej: sin error en primera carga), `_isRedirecting` quedaba `true` para siempre y `loading=nunca-false` en `useTGTAuth`. Ahora detecta si `onAuthFailure` cambió la URL; si no, resetea `_isRedirecting` y llama `redirectToLogin()` como fallback.
+
+- **Tests**: 3 nuevos tests cubriendo `onAuthFailure` sin redirect (URL limpia, subpágina `/xxx/yyy/zzz`, query params `?code=expired`) y con redirect desde subpágina. 98 tests total.
+
 ## v3.5.9 (2026-06-06)
 
 ### Changed
