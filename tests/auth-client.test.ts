@@ -305,6 +305,85 @@ describe('TGTAuthClient', () => {
       expect(session).toBeNull();
     });
 
+    it('onAuthFailure sin redirect debe hacer redirectToLogin como fallback', async () => {
+      const onAuthFailure = jest.fn(); // callback que NO redirige
+      const client = new TGTAuthClient({ ...mockConfig, onAuthFailure });
+      
+      const session = await client.checkSession();
+      
+      // onAuthFailure debe haberse llamado
+      expect(onAuthFailure).toHaveBeenCalledTimes(1);
+      // Como onAuthFailure no redirigió, el SDK debe hacer redirectToLogin
+      expect(window.location.href).not.toBe('http://localhost:3000/');
+      // isRedirecting debe ser false después del fallback
+      expect(client.isRedirecting()).toBe(false);
+      expect(session).toBeNull();
+    });
+
+    it('onAuthFailure sin redirect desde subpagina /xxx/yyy/zzz debe redirigir a login', async () => {
+      // Simular que el usuario está en una subpágina (ej: /tenants/settings)
+      window.location.href = 'http://localhost:3000/tenants/settings';
+      
+      const onAuthFailure = jest.fn();
+      const client = new TGTAuthClient({ ...mockConfig, onAuthFailure });
+      
+      const session = await client.checkSession();
+      
+      expect(onAuthFailure).toHaveBeenCalledTimes(1);
+      // Debe redirigir a login, no quedarse en la subpágina
+      expect(window.location.href).not.toBe('http://localhost:3000/tenants/settings');
+      expect(client.isRedirecting()).toBe(false);
+      expect(session).toBeNull();
+    });
+
+    it('onAuthFailure sin redirect desde URL con query params debe redirigir a login', async () => {
+      // Simular URL con query params (ej: después de OAuth callback fallido)
+      window.location.href = 'http://localhost:3000/auth/callback?code=expired&state=abc';
+      
+      const onAuthFailure = jest.fn();
+      const client = new TGTAuthClient({ ...mockConfig, onAuthFailure });
+      
+      const session = await client.checkSession();
+      
+      expect(onAuthFailure).toHaveBeenCalledTimes(1);
+      // Debe redirigir a login, no quedarse colgado con query params
+      expect(window.location.href).not.toContain('/auth/callback');
+      expect(window.location.href).not.toContain('code=');
+      expect(client.isRedirecting()).toBe(false);
+      expect(session).toBeNull();
+    });
+
+    it('onAuthFailure con redirect desde subpagina debe mantener isRedirecting true', async () => {
+      window.location.href = 'http://localhost:3000/dashboard/settings';
+      
+      const onAuthFailure = jest.fn(() => {
+        window.location.href = 'http://identity/login?error=session_expired';
+      });
+      const client = new TGTAuthClient({ ...mockConfig, onAuthFailure });
+      
+      const session = await client.checkSession();
+      
+      expect(onAuthFailure).toHaveBeenCalledTimes(1);
+      // URL debe haber cambiado a identity
+      expect(window.location.href).toBe('http://identity/login?error=session_expired');
+      expect(client.isRedirecting()).toBe(true);
+      expect(session).toBeNull();
+    });
+
+    it('onAuthFailure con redirect debe mantener isRedirecting true', async () => {
+      const onAuthFailure = jest.fn(() => {
+        window.location.href = 'http://identity/login';
+      });
+      const client = new TGTAuthClient({ ...mockConfig, onAuthFailure });
+      
+      const session = await client.checkSession();
+      
+      expect(onAuthFailure).toHaveBeenCalledTimes(1);
+      // isRedirecting debe ser true porque onAuthFailure redirigió
+      expect(client.isRedirecting()).toBe(true);
+      expect(session).toBeNull();
+    });
+
     it('debe refrescar token cuando JWT expirado y restaurar sesión', async () => {
       const expiredJwt = createMockJWT({
         sub: 'user-uuid',

@@ -2318,8 +2318,15 @@ Posibles causas:
     }
 
     if (this.config.onAuthFailure) {
+      const urlBefore = typeof window !== 'undefined' ? window.location.href : null;
       this._isRedirecting = true;
       this.config.onAuthFailure(error);
+      // Si onAuthFailure no redirigió (misma URL), hacer redirect normal
+      if (urlBefore && window.location.href === urlBefore) {
+        this._isRedirecting = false;
+        this.redirectToLogin();
+        return;
+      }
     } else {
       this.redirectToLogin();
     }
