@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.5.9 (2026-06-06)
+
+### Changed
+
+- **Estandarización de eventos WS**: `SESSION_REVOKED` ahora usa formato uppercase con `payload` anidado, consistente con `ROLES_CHANGED`, `ACCESS_REVOKED` y `SESSION_REVOKED_BULK`. Payload: `{ type: 'SESSION_REVOKED', payload: { userId, reason } }`.
+
+### Fixed
+
+- **SDK onmessage**: `case 'session:revoked'` → `case 'SESSION_REVOKED'`. Lee `data.payload?.userId` y `data.payload?.reason` en vez de `data.userId` / `data.reason`.
+
 ## v3.5.8 (2026-06-06)
 
 ### Added
