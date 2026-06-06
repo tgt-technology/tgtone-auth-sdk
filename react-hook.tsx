@@ -221,7 +221,9 @@ export function useTGTAuth(config: UseTGTAuthConfig): UseTGTAuthResult {
         console.error('[useTGTAuth] Error validando sesión:', error);
         setSession(null);
       } finally {
-        setLoading(false);
+        if (!authClient.isRedirecting()) {
+          setLoading(false);
+        }
       }
     }
 

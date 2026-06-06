@@ -307,6 +307,7 @@ export class TGTAuthClient {
   private sessionCheckTimer: ReturnType<typeof setInterval> | null = null;
   private directHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private _wakeInProgress = false;
+  private _isRedirecting = false;
   private static readonly SESSION_CHECK_INTERVAL_MS = 60 * 1000; // 1 min
 
   constructor(config: TGTAuthConfig) {
@@ -1101,6 +1102,9 @@ Posibles causas:
       throw new Error('Could not determine redirectUri. Set redirectUri or appDomain in TGTAuthConfig.');
     }
 
+    // Flag sincrónico: indica que estamos redirigiendo, antes del primer await
+    this._isRedirecting = true;
+
     const { generatePKCE } = await import('./pkce');
     const { codeVerifier, codeChallenge } = await generatePKCE();
 
@@ -1437,6 +1441,15 @@ Posibles causas:
   }
 
   /**
+   * Indica si el SDK está en proceso de redirigir al login.
+   * Útil para hooks como useTGTAuth para no soltar loading=false
+   * antes de que la navegación se complete.
+   */
+  isRedirecting(): boolean {
+    return this._isRedirecting;
+  }
+
+  /**
    * @deprecated Usar `startSessionMonitor()` en su lugar.
    */
   startHeartbeat(): void {
@@ -1507,15 +1520,28 @@ Posibles causas:
         try {
           const data = JSON.parse(event.data);
           switch (data.type) {
-            case 'session:revoked': {
+            case 'SESSION_REVOKED': {
               const myUserId = this.currentUser?.sub;
-              if (myUserId && myUserId === data.userId) {
+              const revUserId = data.payload?.userId;
+              if (myUserId && myUserId === revUserId) {
                 this.log('🚫 Session Cache: sesión revocada instantáneamente');
                 this.stopSessionMonitor();
-                this.handleSessionRevoked({
-                  code: 'USER_INACTIVE',
-                  message: 'Tu sesión fue cerrada en otro dispositivo.',
-                });
+                if (data.payload?.reason === 'logout') {
+                  // Logout voluntario desde otra app → redirect silencioso al login
+                  this.currentUser = null;
+                  this.currentSession = null;
+                  this.clearStoredToken();
+                  this.clearRefreshToken();
+                  this.clearTempToken();
+                  this.clearPermissionsCache();
+                  this.log('🔁 Redirigiendo al login por logout en otra app');
+                  this.redirectToLogin();
+                } else {
+                  this.handleSessionRevoked({
+                    code: 'USER_INACTIVE',
+                    message: 'Tu sesión fue cerrada en otro dispositivo.',
+                  });
+                }
               }
               break;
             }
@@ -2292,6 +2318,7 @@ Posibles causas:
     }
 
     if (this.config.onAuthFailure) {
+      this._isRedirecting = true;
       this.config.onAuthFailure(error);
     } else {
       this.redirectToLogin();

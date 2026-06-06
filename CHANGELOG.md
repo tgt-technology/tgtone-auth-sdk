@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v3.5.8 (2026-06-06)
+
+### Added
+
+- **`isRedirecting()`**: Nuevo getter público en `TGTAuthClient`. Indica si el SDK está en proceso de redirigir al login. Se setea en `authorize()`, `handleNoSession()` y `redirectToLogin()` antes de cualquier async operation.
+
+- **`useTGTAuth` hook fix**: En `finally`, no pone `loading=false` si `isRedirecting()` es `true`. Esto evita la página en blanco cuando el SDK está redirigiendo al login pero React ya renderizó con `loading=false` y `session=null`.
+
+### Fixed
+
+- **Cross-app logout (WS)**: El SDK ahora redirige al login (no a blocked page) cuando recibe `session:revoked` con `reason: 'logout'` desde el WebSocket del session cache. El logout voluntario desde otra app ya no muestra "Cuenta Bloqueada".
+
+### Changed
+
+- **Documentación consolidada**: README conciso, API.md en español, ARCHITECTURE.md con flujos OAuth/WS. Eliminados docs redundantes (MIGRATION_GUIDE v1→v2, QUICKSTART_REACT, PUBLISHING con paths viejos, docs/README como índice).
+
 ## v3.5.7 (2026-06-05)
 
 ### Fixed

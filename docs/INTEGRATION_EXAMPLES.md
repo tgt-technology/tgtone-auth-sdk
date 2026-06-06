@@ -390,6 +390,6 @@ VITE_APP_KEY=baco
 
 ## Referencia
 
-- **[QUICKSTART_REACT.md](./QUICKSTART_REACT.md)** - Quick Start detallado para React
 - **[API.md](./API.md)** - Referencia completa de API
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Flujos OAuth PKCE, WS, session cache
 - **[CHANGELOG.md](../CHANGELOG.md)** - Historial de cambios
