@@ -397,6 +397,9 @@ export class TGTAuthClient {
       // Decodificar y crear sesión
       const session = this.buildSessionFromToken(token);
 
+      // Redirigir si el usuario no tiene acceso a esta app
+      this.checkAppAccess();
+
       this.log('✅ Cuenta creada exitosamente');
       this.config.onAuthSuccess(session);
 
@@ -475,6 +478,9 @@ export class TGTAuthClient {
 
       // Decodificar y crear sesión
       const session = this.buildSessionFromToken(token);
+
+      // Redirigir si el usuario no tiene acceso a esta app
+      this.checkAppAccess();
 
       this.log('✅ Login exitoso');
       this.config.onAuthSuccess(session);
@@ -717,7 +723,10 @@ export class TGTAuthClient {
 
           this.currentUser = normalizedUser;
           this.currentSession = session;
-          
+
+          // Redirigir si el usuario no tiene acceso a esta app
+          if (!silent) this.checkAppAccess();
+
           this.log(`✅ Sesión válida${label}:`, data.user.email);
           if (!silent) this.config.onAuthSuccess(session);
           
@@ -1017,6 +1026,9 @@ Posibles causas:
       // Decodificar y crear sesión
       const session = this.buildSessionFromToken(token);
 
+      // Redirigir si el usuario no tiene acceso a esta app
+      this.checkAppAccess();
+
       this.log('✅ MFA verificado correctamente');
       this.config.onAuthSuccess(session);
       
@@ -1197,6 +1209,10 @@ Posibles causas:
     window.history.replaceState({}, document.title, window.location.pathname);
 
     const session = this.buildSessionFromToken(token);
+
+    // Redirigir si el usuario no tiene acceso a esta app
+    this.checkAppAccess();
+
     this.config.onAuthSuccess?.(session);
 
     return session;
@@ -1798,6 +1814,29 @@ Posibles causas:
     const type = this.mapErrorCodeToBlockedType(error.code);
     const redirect = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
     return `${this.config.identityUrl}/blocked?type=${type}&message=${encodeURIComponent(error.message)}&redirect=${redirect}`;
+  }
+
+  /**
+   * Redirige a la página de blocked cuando el usuario no tiene acceso a una app.
+   * Detecta automáticamente la app actual desde appKey.
+   * 
+   * @param appName Nombre de la app (opcional, usa appKey por defecto)
+   */
+  redirectToAppBlocked(appName?: string): void {
+    if (typeof window === 'undefined') return;
+    const app = appName || this.config.appKey || 'unknown';
+    const message = `No tienes acceso a ${app}. Contacta a tu administrador.`;
+    const redirect = encodeURIComponent(window.location.origin);
+    const url = `${this.config.identityUrl}/blocked?type=app_access&app=${app}&message=${encodeURIComponent(message)}&redirect=${redirect}`;
+    window.location.href = url;
+  }
+
+  /** Verifica si el usuario tiene acceso a la app actual; si no, redirige automáticamente */
+  private checkAppAccess(): boolean {
+    if (!this.config.appKey) return true; // no appKey = no check
+    if (this.hasAccessToApp(this.config.appKey)) return true;
+    this.redirectToAppBlocked();
+    return false;
   }
 
   // ==========================================================================

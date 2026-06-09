@@ -67,6 +67,9 @@ export interface UseTGTAuthResult {
   /** Verifica acceso a una app */
   hasAccessToApp: (appName: string) => boolean;
   
+  /** Redirige a la página de bloqueo cuando no hay acceso a una app */
+  redirectToAppBlocked: (appName?: string) => void;
+  
   /** Obtiene permisos granulares filtrados por plan (async, con caché) */
   getPermissions: (forceRefresh?: boolean) => Promise<UserPermissions | null>;
   
@@ -267,6 +270,7 @@ export function useTGTAuth(config: UseTGTAuthConfig): UseTGTAuthResult {
     hasRole: authClient.hasRole.bind(authClient),
     getRoles: authClient.getRoles.bind(authClient),
     hasAccessToApp: authClient.hasAccessToApp.bind(authClient),
+    redirectToAppBlocked: authClient.redirectToAppBlocked.bind(authClient),
     getPermissions: authClient.getPermissions.bind(authClient),
     hasModulePermission: authClient.hasModulePermission.bind(authClient),
     getPlanModules: authClient.getPlanModules.bind(authClient),
