@@ -329,14 +329,16 @@ export class TGTAuthClient {
       this.config.redirectUri = `${window.location.protocol}//${this.config.appDomain}`;
     }
 
-    // Normalize coreApiUrl: sacar trailing slash
+    // Normalize coreApiUrl: quitar /api opcional al final + trailing slash
     if (!this.config.coreApiUrl) {
       throw new Error(
         'coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl. ' +
-        'Ej: coreApiUrl: "https://dev-core.tgtone.cl/api"'
+        'Ej: coreApiUrl: "https://dev-core.tgtone.cl" (sin /api)'
       );
     }
-    this.config.coreApiUrl = this.config.coreApiUrl.replace(/\/+$/, '');
+    this.config.coreApiUrl = this.config.coreApiUrl
+      .replace(/\/api\/?$/, '')
+      .replace(/\/+$/, '');
 
     this.log('🔹 TGT Auth Client inicializado', {
       coreApiUrl: this.config.coreApiUrl,

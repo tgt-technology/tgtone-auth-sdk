@@ -891,4 +891,176 @@ describe('TGTAuthClient', () => {
       expect(session?.user.roles.console).toContain('admin');
     });
   });
+
+  describe('coreApiUrl normalization', () => {
+    describe('constructor strips /api suffix', () => {
+      const cases: { input: string; expected: string }[] = [
+        { input: 'http://localhost:3090/api',      expected: 'http://localhost:3090' },
+        { input: 'http://localhost:3090/api/',     expected: 'http://localhost:3090' },
+        { input: 'http://localhost:3090/apix',     expected: 'http://localhost:3090/apix' },
+        { input: 'http://localhost:3090/api/v1',   expected: 'http://localhost:3090/api/v1' },
+        { input: 'http://localhost:3090/',         expected: 'http://localhost:3090' },
+        { input: 'http://localhost:3090',          expected: 'http://localhost:3090' },
+        { input: 'https://dev-core.tgtone.cl/api', expected: 'https://dev-core.tgtone.cl' },
+        { input: 'https://qa-core.tgtone.cl',      expected: 'https://qa-core.tgtone.cl' },
+        { input: 'https://core.tgtone.cl/api/',    expected: 'https://core.tgtone.cl' },
+        { input: 'http://127.0.0.1:3090/api',      expected: 'http://127.0.0.1:3090' },
+        { input: 'http://localhost:3090/api/v1/',  expected: 'http://localhost:3090/api/v1' },
+      ];
+
+      it.each(cases)('$input → $expected', ({ input, expected }) => {
+        const client = new TGTAuthClient({
+          coreApiUrl: input,
+          appDomain: 'localhost:8080',
+          debug: false,
+        });
+        expect((client as any).config.coreApiUrl).toBe(expected);
+      });
+    });
+
+    describe('throws on missing coreApiUrl', () => {
+      it('lanza error cuando coreApiUrl es undefined', () => {
+        expect(() => new TGTAuthClient({
+          coreApiUrl: undefined as any,
+          appDomain: 'localhost:8080',
+          debug: false,
+        })).toThrow('coreApiUrl es requerido');
+      });
+
+      it('lanza error cuando coreApiUrl es string vacío', () => {
+        expect(() => new TGTAuthClient({
+          coreApiUrl: '',
+          appDomain: 'localhost:8080',
+          debug: false,
+        })).toThrow('coreApiUrl es requerido');
+      });
+
+      it('el mensaje de error NO contiene /api en el ejemplo', () => {
+        expect(() => new TGTAuthClient({
+          coreApiUrl: undefined as any,
+          appDomain: 'localhost:8080',
+        })).toThrow('(sin /api)');
+      });
+    });
+
+    describe('URL helpers usan URL normalizada', () => {
+      const client = new TGTAuthClient({
+        coreApiUrl: 'http://localhost:3090/api',
+        appDomain: 'localhost:8080',
+        debug: false,
+      });
+
+      it('getLoginUrl() → normalized/login', () => {
+        expect(client.getLoginUrl()).toBe('http://localhost:3090/login');
+      });
+
+      it('getLoginUrl({redirect}) → normalized/login?redirect=...', () => {
+        const url = client.getLoginUrl({ redirect: 'http://localhost:8080/dashboard' });
+        expect(url).toBe('http://localhost:3090/login?redirect=http%3A%2F%2Flocalhost%3A8080%2Fdashboard');
+      });
+
+      it('getTokenUrl() → normalized/api/v1/auth/token', () => {
+        expect(client.getTokenUrl()).toBe('http://localhost:3090/api/v1/auth/token');
+      });
+
+      it('getLogoutUrl() → normalized/api/v1/auth/logout', () => {
+        expect(client.getLogoutUrl()).toBe('http://localhost:3090/api/v1/auth/logout');
+      });
+
+      it('getRefreshUrl() → normalized/api/v1/auth/refresh', () => {
+        expect(client.getRefreshUrl()).toBe('http://localhost:3090/api/v1/auth/refresh');
+      });
+
+      it('getMeUrl() → normalized/api/v1/auth/me', () => {
+        expect(client.getMeUrl()).toBe('http://localhost:3090/api/v1/auth/me');
+      });
+
+      it('getMeUrl(appKey) → normalized/api/v1/auth/me?app=...', () => {
+        expect(client.getMeUrl('console')).toBe('http://localhost:3090/api/v1/auth/me?app=console');
+      });
+
+      it('getSignupUrl() → normalized/api/v1/auth/signup', () => {
+        expect(client.getSignupUrl()).toBe('http://localhost:3090/api/v1/auth/signup');
+      });
+
+      it('getLoginApiUrl() → normalized/api/v1/auth/login', () => {
+        expect(client.getLoginApiUrl()).toBe('http://localhost:3090/api/v1/auth/login');
+      });
+
+      it('getExchangeUrl() → normalized/api/v1/auth/exchange', () => {
+        expect(client.getExchangeUrl()).toBe('http://localhost:3090/api/v1/auth/exchange');
+      });
+
+      it('getBlockedRedirectUrl() → normalized/blocked?type=...', () => {
+        const url = client.getBlockedRedirectUrl({
+          code: 'TENANT_INACTIVE',
+          message: 'Tenant desactivado',
+        });
+        // TENANT_INACTIVE mapea a type=tenant (ver mapErrorCodeToBlockedType)
+        expect(url).toContain('http://localhost:3090/blocked?type=tenant');
+        expect(url).toContain('Tenant%20desactivado');
+      });
+    });
+
+    describe('sin /api en input, URL helpers no se rompen', () => {
+      const client = new TGTAuthClient({
+        coreApiUrl: 'http://localhost:3090',
+        appDomain: 'localhost:8080',
+        debug: false,
+      });
+
+      it('getLoginUrl() → /login sin doble slashes', () => {
+        expect(client.getLoginUrl()).toBe('http://localhost:3090/login');
+      });
+
+      it('getTokenUrl() → /api/v1/auth/token sin doble /api', () => {
+        expect(client.getTokenUrl()).toBe('http://localhost:3090/api/v1/auth/token');
+      });
+    });
+
+    describe('authorize() construye URL con coreApiUrl normalizado', () => {
+      // authorize() usa window.location.href que no redirige realmente en jsdom.
+      // La construcción de la URL se valida indirectamente verificando que
+      // coreApiUrl se normalizó correctamente y que los helpers getLoginUrl/getTokenUrl
+      // (usados internamente por authorize) devuelven las URLs correctas.
+      const mockLog = jest.fn();
+
+      beforeEach(() => {
+        sessionStorage.clear();
+        jest.clearAllMocks();
+      });
+
+      it('redirectToLogin() usa coreApiUrl normalizado para construir login URL', () => {
+        const client = new TGTAuthClient({
+          coreApiUrl: 'http://localhost:3090/api',
+          appDomain: 'localhost:8080',
+          appKey: 'console',
+          debug: true,
+        });
+
+        // coreApiUrl se normalizó en el constructor
+        expect((client as any).config.coreApiUrl).toBe('http://localhost:3090');
+
+        // getLoginUrl() es el mismo método que authorize() usa internamente
+        expect(client.getLoginUrl()).toBe('http://localhost:3090/login');
+        expect(client.getTokenUrl()).toBe('http://localhost:3090/api/v1/auth/token');
+        expect(client.getLogoutUrl()).toBe('http://localhost:3090/api/v1/auth/logout');
+      });
+
+      it('URLs sin /api duplicado para coreApiUrl ya limpia', () => {
+        const client = new TGTAuthClient({
+          coreApiUrl: 'http://localhost:3090',
+          appDomain: 'localhost:8080',
+          appKey: 'console',
+          debug: true,
+        });
+
+        expect(client.getLoginUrl()).toBe('http://localhost:3090/login');
+        expect(client.getTokenUrl()).toBe('http://localhost:3090/api/v1/auth/token');
+        // No hay doble /api en ninguna URL
+        expect(client.getLoginUrl()).not.toMatch(/\/api\/login/);
+        expect(client.getTokenUrl()).not.toMatch(/\/api\/api\//);
+      });
+    });
+  });
 });
