@@ -17,7 +17,7 @@ import { useTGTAuth } from '@tgtone/auth-sdk';
 
 function App() {
   const { session, loading, logout, hasRole } = useTGTAuth({
-    identityUrl: 'https://dev-core.tgtone.cl',
+    coreApiUrl: 'https://dev-core.tgtone.cl/api',
     appDomain: window.location.host,
     appKey: 'console',
   });
@@ -41,7 +41,7 @@ function App() {
 import { TGTAuthClient } from '@tgtone/auth-sdk';
 
 const auth = new TGTAuthClient({
-  identityUrl: 'https://dev-core.tgtone.cl',
+    coreApiUrl: 'https://dev-core.tgtone.cl/api',
   appDomain: window.location.host,
   appKey: 'console',
 });
@@ -68,7 +68,10 @@ if (session) {
 | `getToken()` | Obtiene JWT actual |
 | `isRedirecting()` | `true` si está redirigiendo al login |
 | `getBlockedRedirectUrl(error)` | URL de página bloqueada |
+| `getApplicationRoles(appId)` | Obtiene roles de una aplicación desde el Core API |
+| `listUsers(tenantId)` | Lista usuarios de un tenant desde el Core API |
 | `startSessionMonitor()` | Inicia heartbeat + WS |
+| `stopSessionMonitor()` | Detiene heartbeat + WS |
 
 ---
 
@@ -96,6 +99,24 @@ interface TGTUser {
 ```
 
 ---
+
+## Migración desde v3 a v4
+
+En v4, `identityUrl` pasó a llamarse `coreApiUrl`. El login, signup, auth, roles y usuarios están todos en el mismo Core API.
+
+```diff
+-  identityUrl: 'https://identity.tgtone.cl',
++  coreApiUrl: 'https://dev-core.tgtone.cl/api',
+```
+
+**Métodos nuevos:**
+
+| Método | Reemplaza | Descripción |
+|--------|-----------|-------------|
+| `authClient.getApplicationRoles(appId)` | `core.applications.getRoles()` | Roles de una aplicación |
+| `authClient.listUsers(tenantId)` | `core.users.list()` | Usuarios de un tenant |
+
+Si estabas usando `@tgtone/core-sdk` solo para notificaciones, migra a `@tgtone/notifications-sdk`. Si lo usabas para auth, roles o usuarios, estos métodos ya están en `@tgtone/auth-sdk` v4.
 
 ## Licencia
 

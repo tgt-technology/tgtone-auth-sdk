@@ -8,7 +8,7 @@
  * // Uso básico
  * function App() {
  *   const { session, loading, logout, hasRole } = useTGTAuth({
- *     identityUrl: 'https://identity.tgtone.cl',
+ *     coreApiUrl: .https://dev-core.tgtone.cl/api.,
  *     appDomain: 'zenith.tgtone.cl',
  *     enableHeartbeat: true, // Habilitar validación periódica
  *   });
@@ -127,7 +127,7 @@ export interface UseTGTAuthResult {
  * // Uso básico
  * function App() {
  *   const { session, loading, logout, hasRole, tenantId } = useTGTAuth({
- *     identityUrl: 'https://identity.tgtone.cl',
+ *     coreApiUrl: .https://dev-core.tgtone.cl/api.,
  *     appDomain: 'zenith.tgtone.cl',
  *     debug: true,
  *     enableHeartbeat: true, // Valida sesión cada 5 minutos
@@ -156,7 +156,7 @@ export interface UseTGTAuthResult {
  * // Con manejo de sesión revocada personalizado (Landing)
  * function LandingApp() {
  *   const { session, loading, revokedError } = useTGTAuth({
- *     identityUrl: 'https://identity.tgtone.cl',
+ *     coreApiUrl: .https://dev-core.tgtone.cl/api.,
  *     appDomain: 'tgtone.cl',
  *     showRevokedState: true, // No redirigir, mostrar estado
  *   });

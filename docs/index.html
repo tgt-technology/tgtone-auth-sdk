@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@tgtone/auth-sdk v4 — Arquitectura</title>
+  <script src="https://unpkg.com/@antv/g6@5/dist/g6.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/typescript.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --bg-card: #161b22; --bg-code: #1c2333;
+      --border: #30363d; --text: #e6edf3; --text-muted: #8b949e;
+      --accent: #58a6ff; --green: #3fb950; --orange: #d29922;
+      --red: #f85149; --purple: #bc8cff; --cyan: #39d2c0;
+      --radius: 12px; --radius-sm: 8px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    header { padding: 48px 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+    header h1 {
+      font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    header .sub { color: var(--text-muted); font-size: 1rem; margin-top: 4px; }
+    .badge-v { display: inline-block; background: #1f6feb; color: #fff; font-size: 0.7rem; font-weight: 600; padding: 2px 10px; border-radius: 20px; margin-top: 6px; }
+    .badge-red { background: var(--red); }
+    .badge-green { background: var(--green); }
+
+    nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 28px; }
+    nav a {
+      padding: 5px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: 500;
+      background: var(--bg-card); border: 1px solid var(--border);
+      transition: all 0.15s; color: var(--text-muted);
+    }
+    nav a:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+    section { margin-bottom: 40px; }
+    section h2 { font-size: 1.35rem; font-weight: 700; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    section h3 { font-size: 1rem; font-weight: 600; margin: 20px 0 8px; color: var(--accent); }
+    section h4 { font-size: 0.92rem; font-weight: 600; margin: 14px 0 6px; color: var(--cyan); }
+    section p { margin-bottom: 10px; color: var(--text-muted); font-size: 0.92rem; }
+    section ul { margin: 6px 0 12px 18px; color: var(--text-muted); }
+    section li { margin-bottom: 4px; font-size: 0.9rem; }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 20px; margin-bottom: 14px;
+    }
+    .card-title { font-weight: 600; font-size: 0.92rem; margin-bottom: 4px; }
+    .card p { font-size: 0.88rem; }
+    .card-accent { border-left: 3px solid var(--accent); }
+    .card-orange { border-left: 3px solid var(--orange); }
+    .card-red { border-left: 3px solid var(--red); }
+    .card-green { border-left: 3px solid var(--green); }
+
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    pre {
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px 16px; overflow-x: auto;
+      font-size: 0.8rem; line-height: 1.45; margin: 10px 0;
+    }
+    code.hl { background: var(--bg-code); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { background: var(--bg-card); font-weight: 600; color: var(--text); }
+    td { color: var(--text-muted); }
+    tr:hover td { background: rgba(88,166,255,0.04); }
+    table code { font-size: 0.82em; }
+
+    .graph-wrap {
+      position: relative; margin-bottom: 18px;
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .graph-toolbar {
+      position: absolute; top: 10px; right: 10px; z-index: 10;
+      display: flex; gap: 4px;
+      background: rgba(22,27,34,0.92); backdrop-filter: blur(4px);
+      border: 1px solid var(--border); border-radius: 8px; padding: 4px 5px;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .graph-wrap:hover .graph-toolbar { opacity: 1; }
+    .graph-toolbar button {
+      background: transparent; border: none; width: 28px; height: 26px;
+      border-radius: 5px; cursor: pointer; font-size: 14px; color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.12s;
+    }
+    .graph-toolbar button:hover { background: rgba(88,166,255,0.15); color: var(--accent); }
+
+    .diff-minus { background: rgba(248,81,73,0.12); color: var(--red); }
+    .diff-plus { background: rgba(63,185,80,0.12); color: var(--green); }
+
+    footer { text-align: center; padding: 28px 0; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.82rem; }
+
+    @media (max-width: 640px) {
+      header h1 { font-size: 1.4rem; }
+      .container { padding: 0 14px; }
+      pre { font-size: 0.7rem; padding: 10px; }
+      table { font-size: 0.75rem; }
+      th, td { padding: 5px 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>@tgtone/auth-sdk</h1>
+    <div class="sub">Arquitectura, migración v3→v4 y guía de integración para apps del ecosistema TGT One</div>
+    <div><span class="badge-v">v4.0.1</span> <span class="badge-v badge-red">breaking</span></div>
+  </div>
+</header>
+
+<nav class="container">
+  <a href="#migracion">Migración v3→v4</a>
+  <a href="#diagrama">Arquitectura</a>
+  <a href="#flujo">Flujo auth</a>
+  <a href="#api">API</a>
+  <a href="#nuevos">Métodos nuevos</a>
+  <a href="#errores">Errores</a>
+  <a href="#tests">Tests</a>
+</nav>
+
+<div class="container">
+
+<!-- ════════════════════════════════ -->
+<section id="intro">
+<h2>¿Qué cambió en v4?</h2>
+<p>En v4, el SDK unifica todos los servicios bajo una sola URL: <code>coreApiUrl</code>. Ya no existe <code>identityUrl</code> porque el login, signup, auth, roles y usuarios están todos en el mismo Core API (Console Backend).</p>
+
+<div class="card card-green">
+  <div class="card-title">✅ Qué se agrega</div>
+  <ul>
+    <li><code>getApplicationRoles(appId)</code> — obtiene roles de una aplicación</li>
+    <li><code>listUsers(tenantId)</code> — lista usuarios de un tenant</li>
+    <li>Validación de parámetros con error claro</li>
+    <li>Normalización de trailing slash en <code>coreApiUrl</code></li>
+  </ul>
+</div>
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="migracion">
+<h2>Migración v3 → v4</h2>
+
+<div class="card card-red">
+  <div class="card-title">⚠️ Breaking change</div>
+  <p><code>identityUrl</code> fue renombrado a <code>coreApiUrl</code>. Si usas el nombre antiguo, el constructor lanza un error claro con instrucciones.</p>
+</div>
+
+<table>
+  <tr><th>v3 (obsoleto)</th><th>v4 (actual)</th></tr>
+  <tr>
+    <td class="diff-minus"><pre style="background:transparent;border:none;margin:0;padding:0">identityUrl: 'https://identity.tgtone.cl'</pre></td>
+    <td class="diff-plus"><pre style="background:transparent;border:none;margin:0;padding:0">coreApiUrl: 'https://dev-core.tgtone.cl/api'</pre></td>
+  </tr>
+</table>
+
+<table>
+  <tr><th>Llamada v3 (con core-sdk)</th><th>Llamada v4 (con auth-sdk)</th></tr>
+  <tr>
+    <td class="diff-minus"><pre style="background:transparent;border:none;margin:0;padding:0">core.applications.getRoles(appId)</pre></td>
+    <td class="diff-plus"><pre style="background:transparent;border:none;margin:0;padding:0">authClient.getApplicationRoles(appId)</pre></td>
+  </tr>
+  <tr>
+    <td class="diff-minus"><pre style="background:transparent;border:none;margin:0;padding:0">core.users.list(tenantId)</pre></td>
+    <td class="diff-plus"><pre style="background:transparent;border:none;margin:0;padding:0">authClient.listUsers(tenantId)</pre></td>
+  </tr>
+</table>
+
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="diagrama">
+<h2>Arquitectura</h2>
+<p>El auth-sdk se comunica con el Core API usando <code>coreApiUrl</code> como base única. Todos los endpoints:</p>
+<ul>
+  <li>Auth: login, signup, logout, refresh, exchange</li>
+  <li>Roles: <code>getApplicationRoles(appId)</code></li>
+  <li>Usuarios: <code>listUsers(tenantId)</code></li>
+  <li>Session Cache: WebSocket + REST fallback</li>
+</ul>
+<div class="graph-wrap" id="g-arch" style="height:280px"></div>
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="flujo">
+<h2>Flujo de autenticación</h2>
+<p>El SDK maneja el flujo OAuth PKCE completo. El Core API es responsable de login, intercambio de código y validación de sesión.</p>
+<div class="card card-accent">
+  <div class="card-title">OAuth PKCE flow</div>
+  <div class="mermaid" style="text-align:center;padding:12px 0">
+sequenceDiagram
+    participant App
+    participant CoreAPI
+    participant User
+    App->>CoreAPI: checkSession()
+    CoreAPI-->>App: 401 / no session
+    App->>CoreAPI: authorize() → redirect to login
+    CoreAPI-->>User: Login page
+    User->>CoreAPI: Credentials + code_verifier
+    CoreAPI-->>App: auth code in URL
+    App->>CoreAPI: exchange(code) → JWT
+    CoreAPI-->>App: accessToken + refreshToken
+  </div>
+</div>
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="api">
+<h2>API Reference</h2>
+
+<h3>Config</h3>
+<table>
+  <tr><th>Campo</th><th>Tipo</th><th>Default</th><th>Descripción</th></tr>
+  <tr><td><code>coreApiUrl</code></td><td>string</td><td>requerido</td><td>URL del Core API (ej: <code>https://dev-core.tgtone.cl/api</code>)</td></tr>
+  <tr><td><code>appDomain</code></td><td>string</td><td>requerido</td><td><code>window.location.host</code></td></tr>
+  <tr><td><code>appKey</code></td><td>string</td><td>—</td><td>Key de la app (ej: "baco"). Requerido en dev</td></tr>
+  <tr><td><code>clientId</code></td><td>string</td><td>appKey</td><td>OAuth client ID</td></tr>
+  <tr><td><code>redirectUri</code></td><td>string</td><td>appDomain</td><td>URI de retorno OAuth</td></tr>
+  <tr><td><code>sessionCacheUrl</code></td><td>string</td><td>—</td><td>URL del session cache WS</td></tr>
+  <tr><td><code>debug</code></td><td>boolean</td><td>false</td><td>Logs en consola</td></tr>
+</table>
+
+<h3>Métodos principales</h3>
+<table>
+  <tr><th>Método</th><th>Descripción</th><th>Requiere</th></tr>
+  <tr><td><code>checkSession()</code></td><td>Valida sesión, redirige a login si no hay</td><td>config</td></tr>
+  <tr><td><code>checkSessionSilent(validateServer?)</code></td><td>Valida sin redirigir</td><td>config</td></tr>
+  <tr><td><code>authorize()</code></td><td>Inicia OAuth PKCE flow (redirect)</td><td>clientId + redirectUri</td></tr>
+  <tr><td><code>handleCallback()</code></td><td>Procesa callback OAuth (URL → JWT)</td><td>callback URL</td></tr>
+  <tr><td><code>logout()</code></td><td>Cierra sesión + redirige a login</td><td>sesión activa</td></tr>
+  <tr><td><code>localLogout()</code></td><td>Limpia sesión sin redirigir</td><td>—</td></tr>
+  <tr><td><code>hasRole(app, role)</code></td><td>Verifica rol del usuario (desde JWT)</td><td>sesión activa</td></tr>
+  <tr><td><code>hasAccessToApp(app)</code></td><td>Verifica si tiene al menos un rol en la app</td><td>sesión activa</td></tr>
+  <tr><td><code>getToken()</code></td><td>Obtiene JWT actual de localStorage</td><td>—</td></tr>
+  <tr><td><code>isRedirecting()</code></td><td>¿Está redirigiendo al login?</td><td>—</td></tr>
+  <tr><td><code>getPermissions(forceRefresh?)</code></td><td>Obtiene permisos del usuario (caché 30 min)</td><td>token</td></tr>
+  <tr><td><code>hasModulePermission(mod, action, app?)</code></td><td>Verifica permiso específico</td><td>token</td></tr>
+</table>
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="nuevos">
+<h2>Métodos nuevos (v4)</h2>
+
+<div class="card card-accent">
+  <div class="card-title"><code>authClient.getApplicationRoles(appId)</code></div>
+  <p>Obtiene los roles disponibles para una aplicación desde el Core API.</p>
+  <table>
+    <tr><th>Parámetro</th><th>Tipo</th><th>Descripción</th></tr>
+    <tr><td><code>appId</code></td><td>string</td><td>UUID de la aplicación</td></tr>
+  </table>
+  <p><strong>Retorna:</strong> <code>Promise&lt;any[]&gt;</code> — array de objetos con <code>{ id, key, name, permissions }</code></p>
+  <p><strong>Errores:</strong> <code>"appId es requerido"</code> si el parámetro está vacío. <code>"No hay sesión activa"</code> si no hay token.</p>
+</div>
+
+<div class="card card-accent">
+  <div class="card-title"><code>authClient.listUsers(tenantId)</code></div>
+  <p>Lista usuarios de un tenant desde el Core API.</p>
+  <table>
+    <tr><th>Parámetro</th><th>Tipo</th><th>Descripción</th></tr>
+    <tr><td><code>tenantId</code></td><td>string</td><td>ID del tenant</td></tr>
+  </table>
+  <p><strong>Retorna:</strong> <code>Promise&lt;any[]&gt;</code> — array con <code>{ userId, email, firstName, lastName, isActive, applications }</code></p>
+  <p><strong>Errores:</strong> <code>"tenantId es requerido"</code> si el parámetro está vacío. <code>"No hay sesión activa"</code> si no hay token.</p>
+</div>
+
+<h3>Edge cases cubiertos</h3>
+<table>
+  <tr><th>Caso</th><th>Comportamiento</th></tr>
+  <tr><td><code>getApplicationRoles('')</code></td><td>❌ Error: "appId es requerido"</td></tr>
+  <tr><td><code>getApplicationRoles()</code> sin token</td><td>❌ Error: "No hay sesión activa"</td></tr>
+  <tr><td><code>getApplicationRoles(appId)</code> → API 404</td><td>❌ Error con código HTTP</td></tr>
+  <tr><td><code>getApplicationRoles(appId)</code> → API 403</td><td>❌ Error con código HTTP</td></tr>
+  <tr><td><code>getApplicationRoles(appId)</code> sin roles</td><td>✅ Array vacío</td></tr>
+  <tr><td><code>listUsers('')</code></td><td>❌ Error: "tenantId es requerido"</td></tr>
+  <tr><td><code>listUsers()</code> sin token</td><td>❌ Error: "No hay sesión activa"</td></tr>
+  <tr><td><code>listUsers(tenantId)</code> → API 500</td><td>❌ Error con código HTTP</td></tr>
+  <tr><td><code>listUsers(tenantId)</code> sin usuarios</td><td>✅ Array vacío</td></tr>
+  <tr><td><code>coreApiUrl</code> con trailing slash</td><td>✅ Normalizado: <code>https://url/</code> → <code>https://url</code></td></tr>
+  <tr><td><code>coreApiUrl</code> ausente</td><td>❌ "coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl."</td></tr>
+</table>
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="errores">
+<h2>Manejo de errores</h2>
+
+<p>Novedad en v4: el constructor valida <code>coreApiUrl</code> al inicio y da un error claro si falta. Los métodos nuevos validan sus parámetros antes de hacer fetch.</p>
+
+<table>
+  <tr><th>Escenario</th><th>Error</th><th>¿Cuándo?</th></tr>
+  <tr>
+    <td>Falta <code>coreApiUrl</code> (o se usa <code>identityUrl</code> de v3)</td>
+    <td><code>coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl.<br>Ej: coreApiUrl: "https://dev-core.tgtone.cl/api"</code></td>
+    <td>En el constructor</td>
+  </tr>
+  <tr>
+    <td><code>getApplicationRoles('')</code></td>
+    <td><code>appId es requerido</code></td>
+    <td>Antes del fetch</td>
+  </tr>
+  <tr>
+    <td><code>listUsers('')</code></td>
+    <td><code>tenantId es requerido</code></td>
+    <td>Antes del fetch</td>
+  </tr>
+  <tr>
+    <td>Token expirado o ausente</td>
+    <td><code>No hay sesión activa</code></td>
+    <td>Antes del fetch</td>
+  </tr>
+  <tr>
+    <td>API responde con error</td>
+    <td><code>Error al obtener roles: 404 Not Found</code></td>
+    <td>Después del fetch</td>
+  </tr>
+</table>
+</section>
+
+<!-- ════════════════════════════════ -->
+<section id="tests">
+<h2>Tests</h2>
+
+<p><strong>111 tests, 5 suites, 0 fallos.</strong></p>
+
+<table>
+  <tr><th>Suite</th><th>Tests</th><th>Cubre</th></tr>
+  <tr><td><code>auth-client.test.ts</code></td><td>—</td><td>Signup, login, logout, checkSession, roles, <strong>getApplicationRoles</strong>, <strong>listUsers</strong>, trailing slash, parámetros inválidos</td></tr>
+  <tr><td><code>session-revocation.test.ts</code></td><td>—</td><td>WS session monitor, refresh token, blocked redirect</td></tr>
+  <tr><td><code>pkce.test.ts</code></td><td>2 skip</td><td>PKCE utilities (authorize requiere crypto nativo)</td></tr>
+  <tr><td><code>interceptor.test.ts</code></td><td>—</td><td>Axios interceptor, auth fetch</td></tr>
+  <tr><td><code>react-hook-config.test.ts</code></td><td>—</td><td>Construcción de config del hook</td></tr>
+</table>
+
+<div class="card card-green">
+  <div class="card-title">Migración de tests v3→v4</div>
+  <ul>
+    <li><code>identityUrl</code> → <code>coreApiUrl</code> en todos los mocks</li>
+    <li>9 nuevos tests cubriendo <code>getApplicationRoles</code>, <code>listUsers</code>, trailing slash y parámetros inválidos</li>
+    <li>Test de constructor con <code>coreApiUrl</code> ausente (error claro)</li>
+  </ul>
+</div>
+</section>
+
+</div>
+
+<footer>
+  <div class="container">
+    @tgtone/auth-sdk v4.0.1 — TGT Technology — Sin publicar cambios
+  </div>
+</footer>
+
+<script>
+const C = {
+  surface: '#1c2128', border: '#30363d', text: '#e6edf3', muted: '#8b949e',
+  build: '#58a6ff', deploy: '#3fb950', rollback: '#d29922',
+  server: '#f78166', transfer: '#39d2c0', cache: '#f778ba',
+};
+
+function rect(id, x, y, label, color, opts) {
+  opts = opts || {};
+  return {
+    id, type: 'rect',
+    style: {
+      x, y,
+      size: opts.w ? [opts.w, opts.h || 50] : [160, 50],
+      fill: opts.fill || C.surface, stroke: color || C.border,
+      radius: opts.radius || 6,
+      labelText: label, labelFill: opts.labelColor || color || C.text,
+      labelFontSize: opts.fontSize || 11,
+      labelFontWeight: opts.bold ? 600 : 400,
+    },
+  };
+}
+function edge(from, to, label) {
+  const e = { source: from, target: to, style: { stroke: C.border, endArrow: true } };
+  if (label) e.style.labelText = label;
+  return e;
+}
+
+function initGraph(containerId, data, opts) {
+  opts = opts || {};
+  const container = document.getElementById(containerId);
+  if (!container) return null;
+  const rect = container.getBoundingClientRect();
+  const w = rect.width || container.clientWidth || 800;
+  const h = opts.height || container.clientHeight || 300;
+  container.style.width = w + 'px';
+  container.style.height = h + 'px';
+  let graph;
+  try {
+    const graphOpts = {
+      container, width: w, height: h, autoFit: { type: 'view' },
+      data: JSON.parse(JSON.stringify(data)),
+      node: { style: { labelPlacement: 'center', labelFill: C.text, lineWidth: 1.5, cursor: 'pointer' } },
+      edge: { style: { stroke: C.border, lineWidth: 2, endArrow: true, labelBackground: true, labelBackgroundFill: '#0d1117', labelBackgroundOpacity: 0.9, labelFill: C.muted, labelFontSize: 11 } },
+      behaviors: ['drag-canvas', 'drag-element'],
+    };
+    if (opts.layout) { graphOpts.layout = opts.layout; if (data.nodes) data.nodes.forEach(n => { delete n.style.x; delete n.style.y; }); }
+    graph = new G6.Graph(graphOpts);
+    graph.render();
+    try { const cv = graph.getCanvas(); if (cv && cv.getContainer()) { cv.getContainer().addEventListener('wheel', function(e) { if (e.ctrlKey || e.metaKey) { e.preventDefault(); e.stopPropagation(); var d = e.deltaY > 0 ? 0.88 : 1.12; graph.zoomTo(Math.max(0.2, Math.min(5, graph.getZoom() * d))); } }, { passive: false }); } } catch(_) {}
+    graph.on('canvas:dblclick', function() { graph.zoomTo(1); graph.fitView({ padding: [40, 40] }); });
+  } catch (err) { console.error('[G6]', containerId, err); return null; }
+  return graph;
+}
+
+function addToolbar(graphId, graph, origData) {
+  if (!graph) return;
+  var wrap = document.getElementById(graphId);
+  if (!wrap) return;
+  var tb = document.createElement('div');
+  tb.className = 'graph-toolbar';
+  tb.innerHTML = '<button title="Auto-ordenar" data-action="auto">\u27F3</button><button title="Centrar" data-action="fit">\u2302</button><button title="Zoom +" data-action="zoomin">\u2295</button><button title="Zoom \u2212" data-action="zoomout">\u2296</button><div class="sep"></div><button title="Reset" data-action="reset">\u27F2</button>';
+  wrap.appendChild(tb);
+  tb.addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn || graph.destroyed) return;
+    try {
+      if (btn.dataset.action === 'fit') graph.fitView({ padding: [40, 40] });
+      else if (btn.dataset.action === 'zoomin') graph.zoomTo(Math.min(graph.getZoom() * 1.3, 3));
+      else if (btn.dataset.action === 'zoomout') graph.zoomTo(Math.max(graph.getZoom() / 1.3, 0.3));
+      else if (btn.dataset.action === 'auto' && origData) { graph.setData(JSON.parse(JSON.stringify(origData))); graph.render(); graph.fitView({ padding: [40, 40] }); }
+      else if (btn.dataset.action === 'reset') { graph.zoomTo(1); graph.fitView({ padding: [40, 40] }); }
+    } catch(_) {}
+  });
+}
+
+const archData = {
+  nodes: [
+    rect('app',      80,  100, 'App React\\nuseTGTAuth()',          C.transfer, { w: 140, h: 50, fontSize: 10.5 }),
+    rect('client',   300, 100, 'auth-sdk\\nTGTAuthClient',          C.build,    { w: 140, h: 50, fontSize: 10.5, fill: '#1c2333' }),
+    rect('core',     520, 100, 'Core API\\nConsole Backend',        C.deploy,   { w: 140, h: 50, fontSize: 10.5 }),
+    rect('ws',       740, 100, 'Session Cache\\nWebSocket',         C.server,   { w: 140, h: 50, fontSize: 10.5 }),
+  ],
+  edges: [
+    edge('app', 'client', 'config: coreApiUrl'),
+    edge('client', 'core', 'POST /api/v1/auth'),
+    edge('client', 'ws', 'WS connect'),
+    edge('ws', 'client', 'SESSION_REVOKED'),
+  ],
+};
+
+(function() {
+  var graphs = [
+    { id: 'g-arch', data: archData, height: 280 },
+  ];
+  graphs.forEach(function(g, i) {
+    setTimeout(function() {
+      var gr = initGraph(g.id, g.data, { height: g.height });
+      addToolbar(g.id, gr, g.data);
+    }, i * 150);
+  });
+})();
+</script>
+
+<script>document.querySelectorAll('pre').forEach(function(el){ hljs.highlightElement(el); });</script>
+<script>mermaid.initialize({ theme: 'dark', themeVariables: { fontSize: '13px', primaryColor: '#1c2333', primaryBorderColor: '#30363d', lineColor: '#58a6ff', secondaryColor: '#161b22', tertiaryColor: '#0d1117', actorBkg: '#161b22', actorBorder: '#30363d', actorTextColor: '#e6edf3', labelBoxBkgColor: '#1c2333', labelBoxBorderColor: '#30363d', labelTextColor: '#e6edf3', signalColor: '#58a6ff', signalTextColor: '#e6edf3' } });</script>
+</body>
+</html>

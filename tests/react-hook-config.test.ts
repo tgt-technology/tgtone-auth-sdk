@@ -64,7 +64,7 @@ describe('buildHookConfig (lógica del hook)', () => {
   };
 
   const baseConfig: HookConfig = {
-    identityUrl: 'https://identity.test.tgtone.cl',
+    coreApiUrl: 'https://api.test.tgtone.cl',
     appDomain: 'test.tgtone.cl',
     onAuthSuccess: jest.fn(),
   };
@@ -74,9 +74,9 @@ describe('buildHookConfig (lógica del hook)', () => {
   });
 
   describe('config base', () => {
-    it('debe preservar identityUrl y appDomain', () => {
+    it('debe preservar coreApiUrl y appDomain', () => {
       const { config } = buildHookConfig(baseConfig, baseCallbacks);
-      expect(config.identityUrl).toBe('https://identity.test.tgtone.cl');
+      expect(config.coreApiUrl).toBe('https://api.test.tgtone.cl');
       expect(config.appDomain).toBe('test.tgtone.cl');
     });
 

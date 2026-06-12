@@ -1,6 +1,6 @@
 {
   "name": "@tgtone/auth-sdk",
-  "version": "3.6.0",
+  "version": "4.0.1",
   "description": "SDK de autenticación JWT + Bearer Token para el ecosistema TGT One",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -48,7 +48,6 @@
     "dist",
     "README.md",
     "CHANGELOG.md",
-    "MIGRATION_GUIDE.md",
     "docs"
   ],
   "dependencies": {

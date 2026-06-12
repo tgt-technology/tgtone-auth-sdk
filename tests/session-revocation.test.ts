@@ -12,7 +12,7 @@ jest.useFakeTimers();
 describe('Session Monitor - TGTAuthClient', () => {
   let authClient: TGTAuthClient;
   const mockConfig = {
-    identityUrl: 'http://localhost:3001',
+    coreApiUrl: 'http://localhost:3001',
     appDomain: 'localhost:3000',
     debug: false,
   };

@@ -8,7 +8,7 @@
  * import { TGTAuthClient } from 'tgtone-auth-client';
  * 
  * const auth = new TGTAuthClient({
- *   identityUrl: 'https://identity.tgtone.cl',
+ *   coreApiUrl: .https://dev-core.tgtone.cl/api.,
  *   appDomain: 'zenith.tgtone.cl'
  * });
  * 
@@ -64,7 +64,7 @@ export interface TGTAuthConfig {
    * URL del Identity Provider (sin trailing slash)
    * @example 'https://identity.tgtone.cl'
    */
-  identityUrl: string;
+  coreApiUrl: string;
   
   /**
    * Dominio de la aplicación actual (sin protocolo)
@@ -329,8 +329,17 @@ export class TGTAuthClient {
       this.config.redirectUri = `${window.location.protocol}//${this.config.appDomain}`;
     }
 
+    // Normalize coreApiUrl: sacar trailing slash
+    if (!this.config.coreApiUrl) {
+      throw new Error(
+        'coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl. ' +
+        'Ej: coreApiUrl: "https://dev-core.tgtone.cl/api"'
+      );
+    }
+    this.config.coreApiUrl = this.config.coreApiUrl.replace(/\/+$/, '');
+
     this.log('🔹 TGT Auth Client inicializado', {
-      identityUrl: this.config.identityUrl,
+      coreApiUrl: this.config.coreApiUrl,
       appDomain: this.config.appDomain,
       appKey: this.config.appKey,
       clientId: this.config.clientId,
@@ -739,7 +748,7 @@ export class TGTAuthClient {
 🚫 Error de Conexión - TGT Auth Client
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Origen:  ${typeof window !== 'undefined' ? window.location.origin : 'unknown'}
-Destino: ${this.config.identityUrl}
+Destino: ${this.config.coreApiUrl}
 
 Posibles causas:
 1. Identity backend está offline
@@ -934,7 +943,7 @@ Posibles causas:
    * **Caso de uso:** Apps con acceso restringido a creadores (ej: Hub, que
    * solo permite usuarios @tgtone.cl / @tgtgroup.cl). Estas apps tienen su
    * propia página `/login` y manejan la redirección manualmente, evitando
-   * el flujo SSO estándar que redirige a `identityUrl/login`.
+   * el flujo SSO estándar que redirige a `coreApiUrl/login`.
    *
    * @example
    * ```typescript
@@ -1135,7 +1144,7 @@ Posibles causas:
       params.set('state', encodeURIComponent(options.redirectUrl));
     }
 
-    const authorizeUrl = `${this.config.identityUrl}/login?${params}`;
+    const authorizeUrl = `${this.config.coreApiUrl}/login?${params}`;
 
     // 🔥 Si está en iframe, redirigir el iframe mismo a login (CSP ahora permite Lovable)
     this.log('🔄 Redirigiendo a identity...');
@@ -1297,6 +1306,50 @@ Posibles causas:
       this.log('❌ Error obteniendo permisos:', error);
       return null;
     }
+  }
+
+  // ==========================================================================
+  // MÉTODOS DE CONSULTA A CORE API
+  // ==========================================================================
+
+  /**
+   * Obtener los roles disponibles para una aplicación.
+   * @param appId - ID de la aplicación (UUID)
+   */
+  async getApplicationRoles(appId: string): Promise<any[]> {
+    if (!appId) throw new Error('appId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/applications/${appId}/roles`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener roles: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Listar usuarios de un tenant.
+   * @param tenantId - ID del tenant
+   */
+  async listUsers(tenantId: string): Promise<any[]> {
+    if (!tenantId) throw new Error('tenantId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/users?tenantId=${tenantId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al listar usuarios: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
   }
 
   /**
@@ -1813,7 +1866,7 @@ Posibles causas:
   getBlockedRedirectUrl(error: AuthError): string {
     const type = this.mapErrorCodeToBlockedType(error.code);
     const redirect = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-    return `${this.config.identityUrl}/blocked?type=${type}&message=${encodeURIComponent(error.message)}&redirect=${redirect}`;
+    return `${this.config.coreApiUrl}/blocked?type=${type}&message=${encodeURIComponent(error.message)}&redirect=${redirect}`;
   }
 
   /**
@@ -1827,7 +1880,7 @@ Posibles causas:
     const app = appName || this.config.appKey || 'unknown';
     const message = `No tienes acceso a ${app}. Contacta a tu administrador.`;
     const redirect = encodeURIComponent(window.location.origin);
-    const url = `${this.config.identityUrl}/blocked?type=app_access&app=${app}&message=${encodeURIComponent(message)}&redirect=${redirect}`;
+    const url = `${this.config.coreApiUrl}/blocked?type=app_access&app=${app}&message=${encodeURIComponent(message)}&redirect=${redirect}`;
     window.location.href = url;
   }
 
@@ -1845,7 +1898,7 @@ Posibles causas:
 
   /** Base URL for auth REST API */
   private get authApiBase(): string {
-    return `${this.config.identityUrl}/api/v1/auth`;
+    return `${this.config.coreApiUrl}/api/v1/auth`;
   }
 
   /**
@@ -1853,7 +1906,7 @@ Posibles causas:
    * @param params.opts Opcionales: redirect, clientId para OAuth
    */
   getLoginUrl(params?: { redirect?: string; clientId?: string }): string {
-    let url = `${this.config.identityUrl}/login`;
+    let url = `${this.config.coreApiUrl}/login`;
     const qs = new URLSearchParams();
     if (params?.redirect) qs.set('redirect', params.redirect);
     if (params?.clientId) qs.set('client_id', params.clientId);
@@ -1930,7 +1983,7 @@ Posibles causas:
 
   /** URL del endpoint permissions */
   getPermissionsUrl(): string {
-    return `${this.config.identityUrl}/api/v1/users/me/permissions`;
+    return `${this.config.coreApiUrl}/api/v1/users/me/permissions`;
   }
 
   /**

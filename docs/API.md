@@ -1,6 +1,6 @@
 # API Reference — @tgtone/auth-sdk
 
-> v3.5.8 · SDK de autenticación centralizada para TGT One
+> v4.0.1 · SDK de autenticación centralizada para TGT One
 
 ---
 
@@ -18,7 +18,7 @@ const auth = new TGTAuthClient(config: TGTAuthConfig);
 
 ```typescript
 interface TGTAuthConfig {
-  identityUrl: string;              // URL del backend Identity (ej: https://dev-core.tgtone.cl)
+  coreApiUrl: string;              // URL del Core API (ej: https://dev-core.tgtone.cl/api)
   appDomain: string;                // Dominio de la app (window.location.host)
   appKey?: string;                  // Key de la app (ej: 'console'). Requerido en dev
   redirectUri?: string;             // Custom redirect URI (default: appDomain)
@@ -401,3 +401,33 @@ type AuthErrorCode =
   | 'APP_SUBSCRIPTION_LOCKED'
   | 'TRIAL_EXPIRED';
 ```
+
+### `getApplicationRoles(appId)`
+
+Obtiene los roles disponibles para una aplicación desde el Core API.
+
+```typescript
+const roles = await authClient.getApplicationRoles('app-uuid-123');
+// [ { id: 'r1', key: 'admin', name: 'Administrador', permissions: {...} }, ... ]
+```
+
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `appId` | `string` | UUID de la aplicación |
+
+**Errores:** `Error('appId es requerido')` si el parámetro está vacío. `Error('No hay sesión activa')` si no hay token JWT.
+
+### `listUsers(tenantId)`
+
+Lista usuarios de un tenant desde el Core API.
+
+```typescript
+const users = await authClient.listUsers('tenant-uuid-123');
+// [ { userId: 'u1', email: '...', firstName: '...', lastName: '...', isActive: true, applications: [...] }, ... ]
+```
+
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `tenantId` | `string` | ID del tenant |
+
+**Errores:** `Error('tenantId es requerido')` si el parámetro está vacío. `Error('No hay sesión activa')` si no hay token JWT.

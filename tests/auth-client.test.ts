@@ -12,7 +12,7 @@ function createMockJWT(payload: any): string {
 describe('TGTAuthClient', () => {
   let authClient: TGTAuthClient;
   const mockConfig: TGTAuthConfig = {
-    identityUrl: 'http://localhost:3001',
+    coreApiUrl: 'http://localhost:3001',
     appDomain: 'localhost:3000',
     debug: false
   };
@@ -461,7 +461,7 @@ describe('TGTAuthClient', () => {
     });
   });
 
-  describe('getRoles', () => {
+  describe('getRoles (sync from JWT)', () => {
     it('debe obtener roles de una app', () => {
       (authClient as any).currentUser = {
         roles: {
@@ -477,6 +477,167 @@ describe('TGTAuthClient', () => {
 
     it('debe retornar array vacío si no hay usuario', () => {
       expect(authClient.getRoles('console')).toEqual([]);
+    });
+  });
+
+  describe('coreApiUrl trailing slash', () => {
+    it('debe normalizar trailing slash en coreApiUrl', () => {
+      const client = new TGTAuthClient({
+        coreApiUrl: 'http://localhost:3001/',
+        appDomain: 'localhost:3000',
+        debug: false,
+      });
+      const config = (client as any).config;
+      expect(config.coreApiUrl).toBe('http://localhost:3001');
+      expect(config.coreApiUrl.endsWith('/')).toBe(false);
+    });
+
+    it('debe normalizar multiples trailing slashes', () => {
+      const client = new TGTAuthClient({
+        coreApiUrl: 'http://localhost:3001/api///',
+        appDomain: 'localhost:3000',
+        debug: false,
+      });
+      const config = (client as any).config;
+      expect(config.coreApiUrl).toBe('http://localhost:3001/api');
+    });
+  });
+
+  describe('getApplicationRoles (async from API)', () => {
+    const APP_ID = 'aae35c86-cbdf-45f9-9772-84e126537b27';
+    const mockRoles = [
+      { id: 'r1', key: 'admin', name: 'Administrador', permissions: { modules: {} } },
+      { id: 'r2', key: 'user', name: 'Usuario', permissions: { modules: {} } },
+    ];
+
+    it('debe obtener roles de una aplicación por API', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockRoles,
+      });
+
+      const result = await authClient.getApplicationRoles(APP_ID);
+      expect(result).toEqual(mockRoles);
+      expect(result.length).toBe(2);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `http://localhost:3001/api/v1/applications/${APP_ID}/roles`,
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid-token',
+          }),
+        })
+      );
+    });
+
+    it('debe lanzar error si no hay token', async () => {
+      localStorage.removeItem('tgtone_auth_token');
+      await expect(authClient.getApplicationRoles(APP_ID)).rejects.toThrow('No hay sesión activa');
+    });
+
+    it('debe lanzar error si appId es undefined', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+      await expect(authClient.getApplicationRoles('')).rejects.toThrow('appId es requerido');
+    });
+
+    it('debe lanzar error si API responde 404', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      });
+
+      await expect(authClient.getApplicationRoles('nonexistent-id')).rejects.toThrow('404');
+    });
+
+    it('debe retornar array vacío si no hay roles', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => [],
+      });
+
+      const result = await authClient.getApplicationRoles(APP_ID);
+      expect(result).toEqual([]);
+    });
+
+    it('debe lanzar error si API responde 403', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+      });
+
+      await expect(authClient.getApplicationRoles(APP_ID)).rejects.toThrow('403');
+    });
+  });
+
+  describe('listUsers (async from API)', () => {
+    const TENANT_ID = 'tenant-uuid';
+    const mockUsers = [
+      { userId: 'u1', email: 'user1@test.cl', firstName: 'User', lastName: 'One', isActive: true, applications: [] },
+      { userId: 'u2', email: 'user2@test.cl', firstName: 'User', lastName: 'Two', isActive: true, applications: [] },
+    ];
+
+    it('debe listar usuarios de un tenant', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockUsers,
+      });
+
+      const result = await authClient.listUsers(TENANT_ID);
+      expect(result).toEqual(mockUsers);
+      expect(result.length).toBe(2);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `http://localhost:3001/api/v1/users?tenantId=${TENANT_ID}`,
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid-token',
+          }),
+        })
+      );
+    });
+
+    it('debe lanzar error si no hay token', async () => {
+      localStorage.removeItem('tgtone_auth_token');
+      await expect(authClient.listUsers(TENANT_ID)).rejects.toThrow('No hay sesión activa');
+    });
+
+    it('debe lanzar error si tenantId es undefined', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+      await expect(authClient.listUsers('')).rejects.toThrow('tenantId es requerido');
+    });
+
+    it('debe retornar array vacío si el tenant no tiene usuarios', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => [],
+      });
+
+      const result = await authClient.listUsers('empty-tenant');
+      expect(result).toEqual([]);
+    });
+
+    it('debe lanzar error si API falla', async () => {
+      localStorage.setItem('tgtone_auth_token', 'valid-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      });
+
+      await expect(authClient.listUsers(TENANT_ID)).rejects.toThrow('500');
     });
   });
 

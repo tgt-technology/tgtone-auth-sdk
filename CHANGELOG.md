@@ -2,7 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## v3.5.10 (2026-06-06)
+## v4.0.1 (2026-06-12)
+
+### Fixed
+
+- **Error claro si `coreApiUrl` falta**: Ahora lanza `coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl.` en vez del críptico `Cannot read properties of undefined`.
+- **Trailing slash normalization**: `this.config.coreApiUrl.replace(/\/+$/, '')` en el constructor. URLs con `/` al final ya no producen doble slash en las rutas.
+- **Validación de parámetros**: `getApplicationRoles(appId)` y `listUsers(tenantId)` lanzan error si se llaman con `appId`/`tenantId` vacío.
+- **Tests**: 111 tests, 0 fallos. Cubren trailing slash, parámetros inválidos, y migración identityUrl→coreApiUrl.
+
+## v4.0.0 (2026-06-12)
+
+### Breaking Changes
+
+- **`identityUrl` renombrado a `coreApiUrl`**: El SDK ahora usa `coreApiUrl` como única URL base. El login, signup, auth, roles y usuarios están todos en el mismo Core API (Console Backend). No existe más `identityUrl`.
+  
+  **Cómo migrar de v3 a v4:**
+  ```diff
+  - identityUrl: 'https://identity.tgtone.cl',
+  + coreApiUrl: 'https://dev-core.tgtone.cl/api',
+  ```
+
+### Added
+
+- **`getApplicationRoles(appId)`**: Obtiene los roles disponibles para una aplicación desde el Core API. Reemplaza `core.applications.getRoles()` de `@tgtone/core-sdk`.
+- **`listUsers(tenantId)`**: Lista usuarios de un tenant desde el Core API. Reemplaza `core.users.list()` de `@tgtone/core-sdk`.
+
+## v3.6.0 (2026-06-06)
 
 ### Fixed
 
