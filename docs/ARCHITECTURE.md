@@ -7,32 +7,30 @@
 ## OAuth PKCE Flow
 
 ```
-Browser (SPA)                     Backend (Elysia)              Identity
-     │                                │                            │
-     │  redirectToLogin()             │                            │
-     │  ── authorize() ──────────────▶│                            │
-     │  (genera PKCE challenge)       │                            │
-     │                                │                            │
-     │  window.location.href          │                            │
-     │  ────────────────────────────────────────────────────────▶  │
-     │                                │                            │
-     │                                │     /login (SSR)          │
-     │                                │  ◀───────────────────────  │
-     │                                │                            │
-     │  Login form POST               │                            │
-     │  ────────────────────────────────────────────────────────▶  │
-     │                                │                            │
-     │  302 redirect con ?code=       │                            │
-     │  ◀────────────────────────────────────────────────────────  │
-     │                                │                            │
-     │  SPA recibe ?code=             │                            │
-     │  ── POST /token ──────────────▶│                            │
-     │  (code + PKCE verifier)        │  ── exchange ──▶           │
-     │                                │  ◀── tokens ───            │
-     │  ◀── tokens ───────────────────│                            │
-     │                                │                            │
-     │  Guarda en localStorage        │                            │
-     │  Inicia session monitor        │                            │
+Browser (SPA)                     Backend Core (Elysia)
+     │                                    │
+     │  redirectToLogin()                 │
+     │  ── authorize() ──────────────────▶│
+     │  (genera PKCE challenge)           │
+     │                                    │
+     │  window.location.href              │
+     │  ──── /login (SSR) ───────────────▶│
+     │                                    │
+     │  ◀── Login form HTML ─────────────│
+     │                                    │
+     │  Login form POST                   │
+     │  ─────────────────────────────────▶│
+     │                                    │
+     │  302 redirect con ?code=           │
+     │  ◀─────────────────────────────────│
+     │                                    │
+     │  SPA recibe ?code=                 │
+     │  ── POST /token ──────────────────▶│
+     │  (code + PKCE verifier)            │
+     │  ◀── tokens ──────────────────────│
+     │                                    │
+     │  Guarda en localStorage            │
+     │  Inicia session monitor            │
 ```
 
 ### `isRedirecting()`
