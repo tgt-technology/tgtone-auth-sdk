@@ -301,14 +301,10 @@ export class TGTAuthClient {
   private static readonly PERMISSIONS_CACHE_TTL = 30 * 60 * 1000;
   private refreshPromise: Promise<boolean> | null = null;
 
-  // ── Session Cache (WebSocket + REST fallback) ──
+  // ── Session Cache (WebSocket) ──
   private ws: WebSocket | null = null;
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private sessionCheckTimer: ReturnType<typeof setInterval> | null = null;
-  private directHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private _wakeInProgress = false;
   private _isRedirecting = false;
-  private static readonly SESSION_CHECK_INTERVAL_MS = 60 * 1000; // 1 min
 
   constructor(config: TGTAuthConfig) {
     this.config = {
@@ -1439,11 +1435,9 @@ Posibles causas:
     this.log(`🔹 Iniciando session monitor cada ${this.config.heartbeatIntervalMs / 1000}s`);
     this.isHeartbeatRunning = true;
 
-    // Conectar Session Cache (WebSocket + REST fallback + heartbeat directo)
+    // Conectar Session Cache (WebSocket)
     if (this.config.sessionCacheUrl) {
       this.connectSessionCache();
-      this.startSessionCheckFallback();
-      this.startDirectHeartbeat();
     }
 
     // Detectar wake-from-suspend (PC suspendido → browser reanuda pestañas)
@@ -1498,9 +1492,8 @@ Posibles causas:
       this.isHeartbeatRunning = false;
       this.log('🔹 Session monitor detenido');
     }
-    // Detener también Session Cache (WS + REST fallback + heartbeat directo)
+    // Detener también Session Cache (WS)
     this.stopSessionCache();
-    this.stopDirectHeartbeat();
     this._stopVisibilityListener();
   }
 
@@ -1694,94 +1687,13 @@ Posibles causas:
   }
 
   /**
-   * Inicia el REST fallback: cada 1 minuto consulta al Session Cache
-   * si la sesión sigue válida (cuando WS no está disponible).
-   */
-  private startSessionCheckFallback(): void {
-    if (!this.config.sessionCacheUrl) return;
-
-    this.stopSessionCheckFallback();
-
-    this.sessionCheckTimer = setInterval(async () => {
-      const userId = this.currentUser?.sub;
-      if (!userId) return;
-
-      try {
-        const checkUrl = `${this.config.sessionCacheUrl}/api/session/check/${userId}`;
-        const res = await fetch(checkUrl, { signal: AbortSignal.timeout(5000) });
-
-        if (res.ok) {
-          const body = await res.json();
-          if (body.valid === false) {
-            this.log('⚠️ Session Cache: key expirada (posible suspensión), intentando wake refresh...');
-            const revived = await this._tryWakeRefresh();
-            if (revived) {
-              this.log('✅ Sesión reanimada tras suspensión');
-              return;
-            }
-            this.log('🚫 Wake refresh falló — sesión realmente expirada');
-            this.stopSessionMonitor();
-            this.handleSessionRevoked({
-              code: 'SESSION_EXPIRED',
-              message: 'Tu sesión expiró por inactividad.',
-            });
-          }
-        }
-      } catch {
-        // Timeout o error de red — ignorar, reintenta en 1 min
-      }
-    }, TGTAuthClient.SESSION_CHECK_INTERVAL_MS);
-  }
-
-  /**
-   * Detiene el REST fallback.
-   */
-  private stopSessionCheckFallback(): void {
-    if (this.sessionCheckTimer) {
-      clearInterval(this.sessionCheckTimer);
-      this.sessionCheckTimer = null;
-    }
-  }
-
-  /**
-   * Intenta reanimar la sesión tras detectar key expirada en Redis.
-   * Usa el refresh token (válido 7 días) para obtener un nuevo access token
-   * y re-registrar la sesión en el Session Cache.
-   * 
-   * Escenario típico: PC suspendido → Redis key expira → browser despierta
-   * → el refresh token sigue vigente → se regenera todo sin mostrar login.
+   * Intenta refrescar el token tras wake-from-suspend.
+   * Pausa 3s para recuperación de red (DHCP, WiFi), luego refresca el token.
    */
   private async _tryWakeRefresh(): Promise<boolean> {
-    if (this._wakeInProgress) return false;
-    this._wakeInProgress = true;
-
-    try {
-      // Pausa para que el network stack se recupere (DHCP, WiFi reconnect, etc.)
-      await new Promise(r => setTimeout(r, 3000));
-
-      const refreshed = await this.refreshAccessToken();
-      if (refreshed) {
-        // Re-registrar en Redis via heartbeat directo
-        if (this.config.sessionCacheUrl && this.currentUser?.sub) {
-          try {
-            await fetch(`${this.config.sessionCacheUrl}/api/session/heartbeat`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: this.currentUser.sub }),
-              signal: AbortSignal.timeout(5000),
-            });
-          } catch {
-            // Silencioso — el heartbeat directo del próximo ciclo lo re-registrará
-          }
-        }
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    } finally {
-      this._wakeInProgress = false;
-    }
+    // Pausa para que el network stack se recupere
+    await new Promise(r => setTimeout(r, 3000));
+    return this.refreshAccessToken();
   }
 
   /**
@@ -1811,52 +1723,10 @@ Posibles causas:
   }
 
   /**
-   * Detiene toda la conexión al Session Cache (WS + REST fallback).
+   * Detiene toda la conexión al Session Cache (WS).
    */
   private stopSessionCache(): void {
     this.disconnectSessionCache();
-    this.stopSessionCheckFallback();
-  }
-
-  /**
-   * Heartbeat directo browser → Session Cache (Linode).
-   * Mantiene viva la key en Redis sin pasar por el backend Cloud Run.
-   * Cada `heartbeatIntervalMs` hace POST a /api/session/heartbeat.
-   */
-  private startDirectHeartbeat(): void {
-    if (!this.config.sessionCacheUrl) return;
-    if (this.directHeartbeatTimer) return;
-
-    const interval = this.config.heartbeatIntervalMs;
-    this.log(`🔹 Heartbeat directo cada ${interval / 1000}s`);
-
-    this.directHeartbeatTimer = setInterval(async () => {
-      const userId = this.currentUser?.sub;
-      if (!userId) return;
-
-      try {
-        const url = `${this.config.sessionCacheUrl}/api/session/heartbeat`;
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId }),
-          signal: AbortSignal.timeout(5000),
-        });
-      } catch {
-        // Error de red o timeout — reintentará en el próximo ciclo
-      }
-    }, interval);
-  }
-
-  /**
-   * Detiene el heartbeat directo al Session Cache.
-   */
-  private stopDirectHeartbeat(): void {
-    if (this.directHeartbeatTimer) {
-      clearInterval(this.directHeartbeatTimer);
-      this.directHeartbeatTimer = null;
-      this.log('🔹 Heartbeat directo detenido');
-    }
   }
 
   /**

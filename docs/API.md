@@ -6,7 +6,7 @@
 
 ## TGTAuthClient
 
-Constructor principal. Maneja JWT, sesión, OAuth PKCE, heartbeat y WebSocket.
+Constructor principal. Maneja JWT, sesión, OAuth PKCE, WebSocket y refresh proactivo JWT.
 
 ```typescript
 import { TGTAuthClient } from '@tgtone/auth-sdk';
@@ -24,7 +24,7 @@ interface TGTAuthConfig {
   redirectUri?: string;             // Custom redirect URI (default: appDomain)
   clientId?: string;                // Explicit OAuth client ID (default: appKey)
   sessionCacheUrl?: string;         // URL del session cache WS (https://session.tgtone.cl)
-  heartbeatIntervalMs?: number;     // Intervalo heartbeat (default: 300000 = 5 min)
+  heartbeatIntervalMs?: number;     // Intervalo refresh proactivo JWT (default: 300000 = 5 min)
   allowedRedirectHosts?: string[];  // Hosts permitidos para redirectToLogin
   debug?: boolean;                  // Logs en consola
   popupAuthEnabled?: boolean;       // (deprecado)
@@ -169,10 +169,10 @@ auth.isRedirecting(): boolean
 
 ---
 
-### Sesión Monitor (Heartbeat + WS)
+### Sesión Monitor (WS + refresh JWT)
 
 #### `startSessionMonitor()`
-Inicia heartbeat (cada 5 min) + conexión WebSocket al session cache.
+Inicia conexión WebSocket + refresh proactivo del JWT (cada heartbeatIntervalMs).
 
 ```typescript
 auth.startSessionMonitor(): void

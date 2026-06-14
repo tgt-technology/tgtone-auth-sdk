@@ -87,10 +87,10 @@ import { ref, onMounted } from 'vue';
 import { TGTAuthClient, type TGTSession } from '@tgtone/auth-sdk';
 
 const authClient = new TGTAuthClient({
-  identityUrl: import.meta.env.VITE_IDENTITY_URL || 'https://identity.tgtone.cl',
+  coreApiUrl: import.meta.env.VITE_CORE_API_URL || 'https://dev-core.tgtone.cl',
   appDomain: window.location.host,
   appKey: import.meta.env.VITE_APP_KEY, // Requerido en dev
-  heartbeatIntervalMs: 5 * 60 * 1000,
+  heartbeatIntervalMs: 5 * 60 * 1000, // Refresh proactivo JWT (default)
   debug: import.meta.env.DEV,
 });
 

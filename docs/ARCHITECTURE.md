@@ -77,22 +77,14 @@ Browser (auth-sdk)             Session Cache (Linode)          Backend (Elysia)
 | `ACCESS_REVOKED` | Acceso a app removido | Usuario específico | `{ type, payload: { appKey, reason } }` |
 | `SESSION_REVOKED_BULK` | Tenant suspendido/eliminado | Broadcast a todos | `{ type, payload: { tenantId, reason } }` |
 
-### Heartbeat directo
-
-Cada 5 minutos el SDK envía `POST /session/heartbeat { userId }` directamente al Linode (sin pasar por backend Cloud Run). Evita el cold start del backend.
-
-### REST fallback
-
-Cada 60 segundos el SDK consulta `GET /session/check/:userId`. Si retorna `{ valid: false }`, intenta un refresh del token. Si falla, muestra sesión expirada.
-
 ---
 
 ## Manejo de sesión revocada
 
 ### Detectado en:
 
-1. **WebSocket** — mensaje `session:revoked` → reacción inmediata
-2. **Heartbeat** — refresh falla con 401 → ejecuta `onSessionRevoked`
+1. **WebSocket** — mensaje `SESSION_REVOKED` / `ROLES_CHANGED` / `ACCESS_REVOKED` → reacción inmediata
+2. **Refresh JWT** — refresh falla con 401 → ejecuta `onSessionRevoked`
 3. **Interceptor HTTP** — cualquier request 401 con código de revocación → bloquea sesión
 4. **checkSession()** — al cargar la app detecta token inválido
 

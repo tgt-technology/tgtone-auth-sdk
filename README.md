@@ -70,8 +70,8 @@ if (session) {
 | `getBlockedRedirectUrl(error)` | URL de página bloqueada |
 | `getApplicationRoles(appId)` | Obtiene roles de una aplicación desde el Core API |
 | `listUsers(tenantId)` | Lista usuarios de un tenant desde el Core API |
-| `startSessionMonitor()` | Inicia heartbeat + WS |
-| `stopSessionMonitor()` | Detiene heartbeat + WS |
+| `startSessionMonitor()` | Inicia WS + refresh proactivo JWT |
+| `stopSessionMonitor()` | Detiene WS + refresh |
 
 ---
 
