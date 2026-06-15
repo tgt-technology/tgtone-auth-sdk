@@ -1,21 +1,23 @@
 # Changelog - @tgtone/auth-sdk
 
-## 4.1.0 (2026-06-13)
+## 4.1.1 (2026-06-15)
 
-### Removed
-- **REST session check fallback**: Eliminado `startSessionCheckFallback()` y `stopSessionCheckFallback()`. Este REST polling cada 60s a `/session/check/:userId` era un workaround pre-Redis-Streams. Ahora Redis Streams maneja todas las notificaciones de sesión vía WebSocket (SESSION_REVOKED, ROLES_CHANGED, etc.). Causaba falsos positivos de "sesión expirada por inactividad" por TTL de Redis, no por revocación real.
-- **Direct heartbeat**: Eliminado `startDirectHeartbeat()` y `stopDirectHeartbeat()`. El POST a `/session/heartbeat` cada 5 minutos solo lo consultaba el session check eliminado. Sin consumidor, no tiene propósito.
-- Eliminadas propiedades internas: `sessionCheckTimer`, `directHeartbeatTimer`, `_wakeInProgress`, `SESSION_CHECK_INTERVAL_MS`.
+### Added
+- **Multi-tab refresh token sync**: Implementada sincronización del refresh token entre pestañas del mismo origen vía `BroadcastChannel` + evento `storage` como fallback. Cuando una tab refresca exitosamente el token, las otras tabs reciben el nuevo token automáticamente, evitando el error 401 por token rotado entre tabs. Ver `_initMultiTabSync()`, `_broadcastRefreshToken()`, `_cleanupMultiTabSync()`.
+- **checkSession deduplicado**: `checkSession()` ahora reusa la Promise si ya hay una verificación en vuelo, evitando doble `/me` en React Strict Mode.
 
-### Simplified
-- `_tryWakeRefresh()` simplificado: ya no re-registra en Redis vía heartbeat directo. Solo refreshAccessToken() con delay de 3s para recuperación de red.
+### Fixed
+- **clearRefreshToken solo en 401**: Antes se borraba el refresh token en cualquier HTTP error (502/503 incluido), matando la sesión aunque el token fuera válido por 30 días. Ahora solo se borra en `401 Unauthorized`.
+- **Heartbeat apilable**: Reemplazado `setInterval` por `setTimeout` recursivo. Si un refresh tarda más que el intervalo, el próximo tick espera a que el actual termine (no más ejecuciones concurrentes del heartbeat).
+- **refreshPromise cleanup garantizado**: La Promise de refresh ahora usa `.finally()` para liberar la referencia, incluso si hay errores en el await.
+- **visibilityWakeHandler**: Ahora usa `this.getStoredToken()` en vez de `this.currentUser?.sub`, ya que `currentUser` puede ser null incluso cuando hay token válido (ej: SSR, page load antes de checkSession).
+- **Visibility listeners con guard**: `_startVisibilityListener` y `_stopVisibilityListener` ahora usan `_visibilityListenersActive` para evitar duplicar event listeners.
+- **Logs en catch blocks**: Agregados logs en 5 catch blocks silenciosos (logout, parseo backend, parseo permisos, parseo WS, parseo refresh).
 
 ### Changed
-- `startSessionMonitor()` ya no arranca session check ni heartbeat directo. Solo conecta WebSocket + refresh proactivo JWT.
-- `stopSessionMonitor()` ya no detiene session check ni heartbeat directo.
-- `stopSessionCache()` simplificado: solo desconecta WS.
+- `startSessionMonitor()`: heartbeat cambió de `setInterval` a `setTimeout` recursivo + `_heartbeatTick` como método propio.
 
 ### Notes
-- `heartbeatIntervalMs` en config sigue usándose para el refresh proactivo del JWT (verificar expiración cada N ms). No afecta.
-- `sessionCacheUrl` en config sigue usándose para conectar WS. No eliminado.
-- El WebSocket (Redis Streams) es ahora el único canal de notificaciones de sesión en tiempo real.
+- **Sin cambios de API pública**: Todos los fixes son internos. Consumidores solo necesitan actualizar la dependencia y re-buildear.
+- **Sin nuevos parámetros de configuración**: BroadcastChannel se inicializa automáticamente. Si no está disponible (Safari < 15.4), cae al evento `storage`.
+- **Sin impacto en SSR**: Los `typeof window === 'undefined'` guards previenen errores en server-side rendering.

@@ -22,6 +22,9 @@
 
 import { TGTAuthClient, AuthError, AuthErrorCode, isRevocationError } from './tgtone-auth-client';
 
+/** Key usada por TGTAuthClient para guardar el refresh token en localStorage */
+const REFRESH_TOKEN_KEY = 'tgtone_refresh_token';
+
 // ============================================================================
 // TIPOS
 // ============================================================================
@@ -147,6 +150,19 @@ export function createAxiosInterceptor(
               return axios.request(retryConfig);
             }
           }
+
+          // Refresh falló — si el refresh token fue borrado de localStorage,
+          // la sesión ya no es recuperable (refresh devolvió 401).
+          // Redirigir al login en vez de dejar la página rota.
+          const stillHasRefresh = typeof localStorage !== 'undefined'
+            ? localStorage.getItem(REFRESH_TOKEN_KEY)
+            : null;
+          if (!stillHasRefresh) {
+            authClient.stopHeartbeat();
+            authClient.redirectToLogin();
+            return Promise.reject(error);
+          }
+          // Si aún hay refresh token, fue error de red → reintentar después
         }
 
         const authError: AuthError | undefined = data?.code && data?.message
@@ -249,6 +265,17 @@ export function createAuthFetch(
               });
               return response;
             }
+          }
+
+          // Refresh falló — si el refresh token fue borrado de localStorage,
+          // la sesión ya no es recuperable → redirigir al login.
+          const stillHasRefresh = typeof localStorage !== 'undefined'
+            ? localStorage.getItem(REFRESH_TOKEN_KEY)
+            : null;
+          if (!stillHasRefresh) {
+            authClient.stopHeartbeat();
+            authClient.redirectToLogin();
+            return response;
           }
         }
 

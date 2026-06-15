@@ -296,6 +296,8 @@ export class TGTAuthClient {
   private currentSession: TGTSession | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private isHeartbeatRunning = false;
+  /** Función del heartbeat recursivo (asignada en startSessionMonitor) */
+  private _heartbeatTick: () => Promise<void> = async () => {};
   private permissionsCache: UserPermissions | null = null;
   private permissionsCacheExpiry: number = 0;
   private static readonly PERMISSIONS_CACHE_TTL = 30 * 60 * 1000;
@@ -305,6 +307,14 @@ export class TGTAuthClient {
   private ws: WebSocket | null = null;
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private _isRedirecting = false;
+  /** Flag para evitar duplicar visibility listeners */
+  private _visibilityListenersActive = false;
+  /** Promise para deduplicar checkSession concurrente */
+  private checkSessionPromise: Promise<TGTSession | null> | null = null;
+  /** Canal BroadcastChannel para sincronizar refresh token entre tabs */
+  private _broadcastChannel: BroadcastChannel | null = null;
+  /** Handler del evento storage (bind this para poder removerlo) */
+  private _storageHandler: ((e: StorageEvent) => void) | null = null;
 
   constructor(config: TGTAuthConfig) {
     this.config = {
@@ -344,6 +354,9 @@ export class TGTAuthClient {
       redirectUri: this.config.redirectUri,
       heartbeatIntervalMs: this.config.heartbeatIntervalMs,
     });
+
+    // Inicializar sincronización multi-tab (BroadcastChannel + storage event)
+    this._initMultiTabSync();
   }
 
   // ==========================================================================
@@ -525,7 +538,13 @@ export class TGTAuthClient {
    * ```
    */
   async checkSession(): Promise<TGTSession | null> {
-    return this._checkSessionCore({ silent: false, validateWithServer: true });
+    // Deduplicar: si ya hay una verificación en vuelo, reusarla
+    if (this.checkSessionPromise) {
+      return this.checkSessionPromise;
+    }
+    this.checkSessionPromise = this._checkSessionCore({ silent: false, validateWithServer: true })
+      .finally(() => { this.checkSessionPromise = null; });
+    return this.checkSessionPromise;
   }
 
   async checkSessionSilent(validateWithServer = true): Promise<TGTSession | null> {
@@ -702,6 +721,7 @@ export class TGTAuthClient {
               }
             } catch {
               // No se pudo parsear el error, continuar sin código
+              this.log('⚠️ No se pudo parsear error del backend');
             }
 
             this.clearStoredToken();
@@ -966,7 +986,7 @@ Posibles causas:
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-        }).catch(() => {});
+        }).catch(() => this.log('⚠️ Logout: error al notificar al backend'));
       }
     } finally {
       this.currentUser = null;
@@ -1285,6 +1305,7 @@ Posibles causas:
           }
         } catch {
           // No se pudo parsear el error
+          this.log('⚠️ Error parseando respuesta de permisos');
         }
 
         return null;
@@ -1443,7 +1464,16 @@ Posibles causas:
     // Detectar wake-from-suspend (PC suspendido → browser reanuda pestañas)
     this._startVisibilityListener();
 
-    this.heartbeatTimer = setInterval(async () => {
+    // Heartbeat recursivo via setTimeout para evitar apilamiento.
+    // Si un refresh tarda más que el intervalo, el próximo tick espera
+    // hasta que el actual termine (a diferencia de setInterval).
+    const scheduleNext = () => {
+      if (!this.isHeartbeatRunning) return;
+      this.heartbeatTimer = setTimeout(() => this._heartbeatTick(), this.config.heartbeatIntervalMs) as unknown as ReturnType<typeof setInterval>;
+    };
+
+    this._heartbeatTick = async (): Promise<void> => {
+      if (!this.isHeartbeatRunning) return;
       try {
         const token = this.getStoredToken();
         if (!token) {
@@ -1479,7 +1509,11 @@ Posibles causas:
       } catch (error) {
         this.log('💓 Monitor: error (ignorando):', error);
       }
-    }, this.config.heartbeatIntervalMs);
+      scheduleNext();
+    };
+
+    // Iniciar el primer ciclo del heartbeat recursivo
+    scheduleNext();
   }
 
   /**
@@ -1487,7 +1521,7 @@ Posibles causas:
    */
   stopSessionMonitor(): void {
     if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
+      clearTimeout(this.heartbeatTimer as unknown as ReturnType<typeof setTimeout>);
       this.heartbeatTimer = null;
       this.isHeartbeatRunning = false;
       this.log('🔹 Session monitor detenido');
@@ -1650,6 +1684,7 @@ Posibles causas:
           }
         } catch {
           // ignorar mensajes no parseables
+          this.log('⚠️ WS: mensaje no parseable');
         }
       };
 
@@ -1684,6 +1719,8 @@ Posibles causas:
       this.ws.close();
       this.ws = null;
     }
+    // Limpiar canales multi-tab al desconectar
+    this._cleanupMultiTabSync();
   }
 
   /**
@@ -1704,7 +1741,7 @@ Posibles causas:
    */
   private _visibilityWakeHandler = async (): Promise<void> => {
     if (document.visibilityState !== 'visible') return;
-    if (!this.currentUser?.sub) return;
+    if (!this.getStoredToken()) return;
 
     this.log('👁️ Tab visible — verificando sesión post-suspensión...');
     await this._tryWakeRefresh();
@@ -1712,14 +1749,90 @@ Posibles causas:
 
   private _startVisibilityListener(): void {
     if (typeof document === 'undefined') return;
+    if (this._visibilityListenersActive) {
+      this.log('⚠️ Visibility listeners ya están activos');
+      return;
+    }
+    this._visibilityListenersActive = true;
     document.addEventListener('visibilitychange', this._visibilityWakeHandler);
     window.addEventListener('pageshow', this._visibilityWakeHandler);
   }
 
   private _stopVisibilityListener(): void {
     if (typeof document === 'undefined') return;
+    if (!this._visibilityListenersActive) return;
+    this._visibilityListenersActive = false;
     document.removeEventListener('visibilitychange', this._visibilityWakeHandler);
     window.removeEventListener('pageshow', this._visibilityWakeHandler);
+  }
+
+  // ── Multi-tab Sync ─────────────────────────────────────────
+
+  /**
+   * Inicializa la sincronización del refresh token entre pestañas del mismo origen.
+   * Usa dos mecanismos complementarios:
+   *
+   * 1. BroadcastChannel API — mensaje directo entre tabs (rápido, ~95% browsers)
+   * 2. Evento `storage` — se dispara automáticamente cuando otra tab escribe en
+   *    localStorage (fallback universal para Safari < 15.4 y contextos restringidos)
+   *
+   * Cuando otra tab recibe un nuevo refresh token, forzamos `refreshPromise = null`
+   * para que el próximo heartbeat lea el token fresco de localStorage en vez de
+   * reusar una Promise con el token viejo.
+   */
+  private _initMultiTabSync(): void {
+    if (typeof window === 'undefined') return;
+
+    // 1. BroadcastChannel (rápido, directo)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this._broadcastChannel = new BroadcastChannel('tgtone_auth_sync');
+        this._broadcastChannel.onmessage = (event: MessageEvent) => {
+          if (event.data?.type === 'REFRESH_TOKEN_UPDATED') {
+            this.log('🔁 Otra tab actualizó el refresh token — invalidando cache');
+            this.refreshPromise = null;
+          }
+        };
+      } catch (err) {
+        this.log('⚠️ No se pudo crear BroadcastChannel:', err);
+      }
+    }
+
+    // 2. storage event (fallback universal)
+    this._storageHandler = (event: StorageEvent) => {
+      if (event.key === TGTAuthClient.REFRESH_TOKEN_KEY) {
+        this.log('🔁 localStorage refresh token cambiado por otra tab');
+        this.refreshPromise = null;
+      }
+    };
+    window.addEventListener('storage', this._storageHandler);
+  }
+
+  /**
+   * Limpia los recursos de sincronización multi-tab.
+   */
+  private _cleanupMultiTabSync(): void {
+    if (this._broadcastChannel) {
+      this._broadcastChannel.close();
+      this._broadcastChannel = null;
+    }
+    if (this._storageHandler && typeof window !== 'undefined') {
+      window.removeEventListener('storage', this._storageHandler);
+      this._storageHandler = null;
+    }
+  }
+
+  /**
+   * Difunde el nuevo refresh token a otras tabs vía BroadcastChannel.
+   */
+  private _broadcastRefreshToken(token: string): void {
+    if (this._broadcastChannel) {
+      try {
+        this._broadcastChannel.postMessage({ type: 'REFRESH_TOKEN_UPDATED', token });
+      } catch {
+        // ignore broadcast errors (tab ya cerrado, etc.)
+      }
+    }
   }
 
   /**
@@ -2003,14 +2116,12 @@ Posibles causas:
       return this.refreshPromise;
     }
 
-    // Creamos la Promise y la almacenamos para que llamadas concurrentes la reutilicen
-    this.refreshPromise = this._executeRefresh();
-
-    try {
-      return await this.refreshPromise;
-    } finally {
+    // Asignar + limpiar en finally para garantizar que siempre se libere
+    this.refreshPromise = this._executeRefresh().finally(() => {
       this.refreshPromise = null;
-    }
+    });
+
+    return this.refreshPromise;
   }
 
   private async _executeRefresh(): Promise<boolean> {
@@ -2042,6 +2153,7 @@ Posibles causas:
           }
         } catch {
           // ignore parse errors
+          this.log('⚠️ Refresh: no se pudo parsear error del servidor');
         }
 
         if (authError && isRevocationError(authError.code)) {
@@ -2052,7 +2164,12 @@ Posibles causas:
         }
 
         this.log('❌ Refresh falló (HTTP', response.status, ')');
-        this.clearRefreshToken();
+        // Solo borrar refresh token en 401 (token inválido/revocado).
+        // En 5xx (502/503 por deploy/restart) mantener el refresh token
+        // para que el próximo heartbeat pueda reintentar.
+        if (response.status === 401) {
+          this.clearRefreshToken();
+        }
         return false;
       }
 
@@ -2248,6 +2365,8 @@ Posibles causas:
     try {
       localStorage.setItem(TGTAuthClient.REFRESH_TOKEN_KEY, token);
       this.log('✅ Refresh token guardado');
+      // Propagar a otras tabs del mismo origen
+      this._broadcastRefreshToken(token);
     } catch (error) {
       this.log('❌ Error guardando refresh token:', error);
     }

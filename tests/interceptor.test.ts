@@ -9,6 +9,7 @@ const mockAuthClient = {
   getToken: jest.fn().mockReturnValue('mock-token'),
   refreshAccessToken: jest.fn().mockResolvedValue(false),
   stopHeartbeat: jest.fn(),
+  redirectToLogin: jest.fn(),
   getBlockedRedirectUrl: jest.fn((error: AuthError) => 
     `http://localhost:3001/blocked?type=${error.code.toLowerCase()}&message=${encodeURIComponent(error.message)}`
   ),
@@ -348,7 +349,10 @@ describe('HTTP Interceptor', () => {
 
       await expect(capturedOnRejected!(error)).rejects.toBeDefined();
       expect(mockAuthClient.refreshAccessToken).toHaveBeenCalled();
-      expect(mockAuthClient.stopHeartbeat).not.toHaveBeenCalled();
+      // Al no haber refresh token en localStorage, el interceptor debe
+      // detener heartbeat y redirigir al login para evitar página rota
+      expect(mockAuthClient.stopHeartbeat).toHaveBeenCalled();
+      expect(mockAuthClient.redirectToLogin).toHaveBeenCalled();
     });
   });
 
