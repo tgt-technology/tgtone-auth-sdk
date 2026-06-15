@@ -1,5 +1,11 @@
 # Changelog - @tgtone/auth-sdk
 
+## 4.1.2 (unreleased)
+
+### Added
+- **`hasRefreshToken()`**: nuevo método público para verificar si existe refresh token en localStorage sin acceder directamente a la API interna. Útil para determinar si la sesión puede renovarse automáticamente.
+- **Storage check en constructor**: verifica disponibilidad de localStorage al inicializar el SDK. Advierte con `console.warn` si localStorage no está disponible (Safari Private, Brave Shields, cuota 5MB llena).
+
 ## 4.1.1 (2026-06-15)
 
 ### Added

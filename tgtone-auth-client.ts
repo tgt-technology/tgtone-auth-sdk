@@ -355,6 +355,21 @@ export class TGTAuthClient {
       heartbeatIntervalMs: this.config.heartbeatIntervalMs,
     });
 
+    // Verificar disponibilidad de localStorage (puede fallar en Safari Private,
+    // Brave Shields, iOS sandboxed iframes, o si la cuota de 5MB está llena)
+    if (typeof window !== 'undefined') {
+      try {
+        const testKey = '__tgt_storage_test__';
+        localStorage.setItem(testKey, '1');
+        localStorage.removeItem(testKey);
+      } catch {
+        console.warn(
+          '[TGT Auth] ⚠️ localStorage no disponible o sin espacio. ' +
+          'El almacenamiento de tokens fallará.'
+        );
+      }
+    }
+
     // Inicializar sincronización multi-tab (BroadcastChannel + storage event)
     this._initMultiTabSync();
   }
@@ -836,12 +851,26 @@ Posibles causas:
   }
 
   /**
-   * Obtiene el token de autenticación actual.
-   * 
+   * Obtiene el token JWT actual desde localStorage.
    * @returns Token JWT o null si no hay sesión
    */
   getToken(): string | null {
     return this.getStoredToken();
+  }
+
+  /**
+   * Verifica si existe un refresh token en localStorage.
+   * Útil para determinar si la sesión puede renovarse automáticamente
+   * sin necesidad de un nuevo login OAuth.
+   * @returns true si hay refresh token guardado
+   */
+  hasRefreshToken(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(TGTAuthClient.REFRESH_TOKEN_KEY) !== null;
+    } catch {
+      return false;
+    }
   }
 
   /**
