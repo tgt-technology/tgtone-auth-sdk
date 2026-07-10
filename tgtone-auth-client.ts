@@ -1239,6 +1239,7 @@ Posibles causas:
         code_verifier: codeVerifier,
         redirect_uri: redirectUri,
       }),
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -2107,6 +2108,7 @@ Posibles causas:
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -2168,6 +2170,7 @@ Posibles causas:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ refreshToken }),
+        credentials: 'include',
       });
 
       if (!response.ok) {

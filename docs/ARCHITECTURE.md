@@ -114,8 +114,31 @@ Cuando el WS envía `SESSION_REVOKED` con `reason: 'logout'`, el SDK entiende qu
 | Post-login redirect | `sessionStorage` | `tgtone_post_login_redirect` |
 | OAuth exchange lock | `window.__oauth_exchange_lock` | en memoria (muere al recargar) |
 
+### Cookies del backend (SSO auto-authorize)
+
+El backend setea dos cookies HttpOnly en su dominio (dev-core.tgtone.cl / core.tgtone.cl):
+
+| Cookie | TTL | Propósito |
+|--------|-----|-----------|
+| `tgtone_session` | 15 min | JWT access token para auto-authorize en GET /login |
+| `tgtone_refresh` | 30 días | Refresh token para auto-authorize cuando `tgtone_session` expira |
+
+**Flujo SSO (auto-authorize):**
+1. App A redirige al browser a `core/login?client_id=...&redirect_uri=...&code_challenge=...`
+2. Backend lee `tgtone_session` → si es válida, genera auth code y redirige de vuelta (sin mostrar login)
+3. Si `tgtone_session` expiró (15 min), backend lee `tgtone_refresh` → valida en BD → si es válida, rota tokens, setea cookies frescas, genera auth code y redirige
+4. Si ambas expiraron → muestra formulario de login
+
+**Desde v4.2.0**, el SDK envía `credentials: 'include'` en los fetch de `_executeRefresh()`, `handleCallback()` y `exchangeAccessToken()`. Esto permite que el browser reciba y almacene las cookies `Set-Cookie` del backend cross-origin (requiere CORS con `credentials: true`, ya configurado en el backend).
+
+**Grace period en rotación (v4.2.0):**
+- `validateAndRotate` no borra la sesión vieja inmediatamente. La marca con `rotatedAt` y la borra después de 60s.
+- Si dos tabs/apps hacen refresh simultáneo, la segunda no dispara `revokeAllSessions`.
+- El campo `rotatedAt` en el modelo `Session` requiere migración `20260710000538_add_session_rotated_at`.
+
 ```
 localStorage  → persiste entre pestañas y sesiones del browser
 sessionStorage → muere al cerrar la pestaña
 window.*      → muere al recargar la página
+cookies       → HttpOnly, host-only del backend, enviadas en redirects físicos
 ```

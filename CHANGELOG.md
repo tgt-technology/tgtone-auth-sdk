@@ -1,5 +1,26 @@
 # Changelog - @tgtone/auth-sdk
 
+## 4.2.0 (2026-07-10)
+
+### Fixed
+- **SSO auto-login después de 15 minutos**: El backend ahora lee la cookie `tgtone_refresh` (30 días) cuando `tgtone_session` (15 min) expira, permitiendo auto-authorize sin mostrar el formulario de login. Antes, el SSO solo funcionaba por 15 minutos.
+- **Cookie de refresh actualizada**: El endpoint `POST /refresh` ahora setea cookies `Set-Cookie` en la respuesta, manteniendo `tgtone_refresh` sincronizada con el token rotado. Antes la cookie quedaba stale (con el token original ya borrado de la BD).
+- **Race condition en rotación de refresh token**: `validateAndRotate` ahora marca la sesión vieja con `rotatedAt` (grace period de 60s) en vez de borrarla inmediatamente. Si dos tabs/apps hacen refresh simultáneo, la segunda no dispara `revokeAllSessions`.
+
+### Added
+- **`credentials: 'include'`** en `fetch` de `_executeRefresh()`, `handleCallback()` y `exchangeAccessToken()`. Permite que el browser reciba y almacene las cookies `Set-Cookie` del backend cross-origin.
+- **`validateRefreshToken()`** en `SessionService`: valida un refresh token sin rotarlo, para uso del auto-authorize.
+- **Campo `rotatedAt`** en modelo `Session` (schema.prisma): timestamp de cuándo fue rotada la sesión, para grace period.
+
+### Changed
+- **`validateAndRotate`**: no borra la sesión vieja inmediatamente. La marca como `rotatedAt` y la borra después del grace period (60s). `detectTokenReuse` ya no dispara `revokeAllSessions` durante el grace period.
+- **`cleanExpiredSessions`**: ahora también limpia sesiones rotadas que pasaron el grace period.
+- **Minor version bump** (4.1.2 → 4.2.0): cambios en backend + SDK que afectan el flujo de auth.
+
+### Migration
+- Aplicar migración `20260710000538_add_session_rotated_at` (agrega columna `rotated_at` a tabla `sessions`).
+- El SDK requiere re-build (`npm run build`) pero sin cambios de API pública para los consumidores.
+
 ## 4.1.2 (unreleased)
 
 ### Added
