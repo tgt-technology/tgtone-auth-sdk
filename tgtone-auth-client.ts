@@ -62,7 +62,7 @@ export interface TGTSession {
 export interface TGTAuthConfig {
   /**
    * URL del Identity Provider (sin trailing slash)
-   * @example 'https://identity.tgtone.cl'
+   * @example 'https://core.tgtone.cl'
    */
   coreApiUrl: string;
   
@@ -1144,7 +1144,7 @@ Posibles causas:
 
   /**
    * Initiate OAuth PKCE authorization flow.
-   * Redirects user to identity.tgtone.cl/v1/auth/authorize
+   * Redirects user to core.tgtone.cl/v1/auth/authorize
    *
    * Stores code_verifier in sessionStorage (cleared on tab close).
    */

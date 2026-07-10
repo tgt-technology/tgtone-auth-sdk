@@ -33,7 +33,7 @@ describe('TGTAuthClient OAuth PKCE methods', () => {
 
   it('authorize() should throw if clientId not configured', async () => {
     const auth = new TGTAuthClient({
-      coreApiUrl: 'https://identity.tgtone.cl',
+      coreApiUrl: 'https://core.tgtone.cl',
       appDomain: 'test.tgtone.cl',
     });
 

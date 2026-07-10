@@ -20,7 +20,7 @@ import { useTGTAuth } from '@tgtone/auth-sdk/react';
 
 function App() {
   const { session, loading, logout, hasRole, revokedError } = useTGTAuth({
-    identityUrl: import.meta.env.VITE_IDENTITY_URL || 'https://identity.tgtone.cl',
+    coreApiUrl: import.meta.env.VITE_IDENTITY_URL || 'https://core.tgtone.cl',
     appDomain: window.location.host,
     appKey: import.meta.env.VITE_APP_KEY, // Requerido en dev
     enableHeartbeat: true,
@@ -51,7 +51,7 @@ import { useTGTAuth } from '@tgtone/auth-sdk/react';
 
 function Dashboard() {
   const { authClient, session } = useTGTAuth({
-    identityUrl: 'https://identity.tgtone.cl',
+    coreApiUrl: 'https://core.tgtone.cl',
     appDomain: 'zenith.tgtone.cl',
   });
 
@@ -179,7 +179,7 @@ const AuthContext = createContext<UseTGTAuthResult | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const auth = useTGTAuth({
-    identityUrl: process.env.NEXT_PUBLIC_IDENTITY_URL || 'https://identity.tgtone.cl',
+    coreApiUrl: process.env.NEXT_PUBLIC_IDENTITY_URL || 'https://core.tgtone.cl',
     appDomain: typeof window !== 'undefined' ? window.location.host : '',
     appKey: process.env.NEXT_PUBLIC_APP_KEY,
     enableHeartbeat: true,
@@ -271,7 +271,7 @@ export class AuthService {
 
   constructor() {
     this.authClient = new TGTAuthClient({
-      identityUrl: 'https://identity.tgtone.cl',
+      coreApiUrl: 'https://core.tgtone.cl',
       appDomain: window.location.host,
       appKey: 'console', // Ajustar según la app
       onSessionRevoked: (error) => {
@@ -366,7 +366,7 @@ export class AppComponent {
 
 ```env
 # .env.local (ejemplo para Baco en dev)
-VITE_IDENTITY_URL=https://identity.tgtone.cl
+VITE_IDENTITY_URL=https://core.tgtone.cl
 VITE_APP_KEY=baco
 ```
 

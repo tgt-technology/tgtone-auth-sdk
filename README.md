@@ -105,8 +105,8 @@ interface TGTUser {
 En v4, `identityUrl` pasó a llamarse `coreApiUrl`. El login, signup, auth, roles y usuarios están todos en el mismo Core API.
 
 ```diff
--  identityUrl: 'https://identity.tgtone.cl',
-+  coreApiUrl: 'https://dev-core.tgtone.cl/api',
+-  identityUrl: 'https://core.tgtone.cl',
++  coreApiUrl: 'https://core.tgtone.cl',
 ```
 
 **Métodos nuevos:**

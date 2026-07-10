@@ -275,7 +275,7 @@ function App() {
     stopSessionMonitor,    // () => void
     permissionsVersion,    // number
   } = useTGTAuth({
-    identityUrl: '...',
+    coreApiUrl: '...',
     appDomain: window.location.host,
     appKey: 'console',
     enableSessionMonitor?: boolean, // default: true
