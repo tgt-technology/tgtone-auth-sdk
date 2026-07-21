@@ -73,11 +73,43 @@ if (session) {
 | `startSessionMonitor()` | Inicia WS + refresh proactivo JWT |
 | `stopSessionMonitor()` | Detiene WS + refresh |
 
+### Gestión de usuarios (v4.3.0)
+
+| Método | Descripción |
+|--------|-------------|
+| `inviteUser(data)` | Crear usuario + asignar roles + email de invitación |
+| `updateUser(profileId, data)` | Actualizar perfil y/o roles de aplicación |
+| `deleteUser(profileId)` | Desactivar usuario (soft delete + revocar sesiones) |
+| `reactivateUser(profileId)` | Reactivar usuario eliminado |
+| `resendInvitation(profileId)` | Reenviar email de invitación |
+| `getUsersMap(tenantId)` | Mapa userId → nombre/email (solo activos) |
+| `listUsers(tenantId)` | Lista usuarios de un tenant |
+| `getApplicationRoles(appId)` | Roles disponibles de una app |
+
+### Server-side (v4.3.0)
+
+Para backends (Node/Bun), cron jobs y webhooks, existe `TGTAdminClient` — mismo API de gestión de usuarios, sin dependencias del DOM:
+
+```typescript
+import { TGTAdminClient } from '@tgtone/auth-sdk/server';
+
+// Con JWT de admin reenviado, o con MAINTENANCE_API_KEY:
+const admin = new TGTAdminClient({
+  coreApiUrl: process.env.CORE_API_URL!,
+  maintenanceKey: process.env.MAINTENANCE_API_KEY!, // o token: jwtDelRequest
+});
+
+const users = await admin.listUsers(tenantId);
+```
+
+Ver [`docs/USERS_MANAGEMENT.md`](./docs/USERS_MANAGEMENT.md) para patrones completos.
+
 ---
 
 ## Documentación
 
 - [`docs/API.md`](./docs/API.md) — Referencia completa de API
+- [`docs/USERS_MANAGEMENT.md`](./docs/USERS_MANAGEMENT.md) — Gestión de usuarios (frontend + backend)
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — OAuth PKCE, WS, session cache
 - [`docs/INTEGRATION_EXAMPLES.md`](./docs/INTEGRATION_EXAMPLES.md) — Vue, Next.js, Angular
 - [`CHANGELOG.md`](./CHANGELOG.md) — Historial de cambios

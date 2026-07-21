@@ -32,6 +32,17 @@ export type {
   AppPermissionDetail,
   PermissionsStructure,
   PermissionModules,
+  // Gestión de usuarios (v4.3.0)
+  ApplicationAccess,
+  InviteUserData,
+  UpdateUserData,
+  UserApplicationAssignment,
+  UserProfile,
+  UserSummary,
+  ApplicationRoleInfo,
+  InviteUserResult,
+  UpdateUserResult,
+  UserActionResult,
 } from './tgtone-auth-client';
 
 export type { UseTGTAuthResult, UseTGTAuthConfig } from './react-hook';

@@ -431,3 +431,79 @@ const users = await authClient.listUsers('tenant-uuid-123');
 | `tenantId` | `string` | ID del tenant |
 
 **Errores:** `Error('tenantId es requerido')` si el parámetro está vacío. `Error('No hay sesión activa')` si no hay token JWT.
+
+---
+
+## Gestión de usuarios (v4.3.0)
+
+Métodos para administrar usuarios del identity core desde cualquier app. Disponibles en `TGTAuthClient` (browser) y en `TGTAdminClient` (server, import desde `@tgtone/auth-sdk/server`). Ver [USERS_MANAGEMENT.md](./USERS_MANAGEMENT.md) para patrones completos.
+
+### `inviteUser(data)`
+
+Crea un usuario en el core, le asigna roles y le envía email de invitación con contraseña temporal.
+
+```typescript
+const result = await authClient.inviteUser({
+  email: 'ana@empresa.cl',
+  firstName: 'Ana',
+  lastName: 'González',
+  tenantId: 'tenant-uuid',
+  organizationalRole?: 'owner',           // requerido si no hay applicationAccess
+  applicationAccess?: [{ applicationId, roleId }], // requerido si no hay organizationalRole
+  customPassword?: string,                 // opcional — backend genera temporal
+});
+// → { message, userId, email, temporaryPassword, mustChangePassword }
+```
+
+### `updateUser(profileId, data)`
+
+Actualiza perfil y/o roles. `applicationAccess` es la lista COMPLETA de accesos (reemplaza los existentes; omitir el campo los deja intactos; null/[] revoca todo).
+
+```typescript
+await authClient.updateUser(profileId, {
+  firstName: 'Ana María',
+  applicationAccess: [{ applicationId: formflowAppId, roleId: adminRoleId }],
+});
+// → { message, profileId, userId }
+```
+
+### `deleteUser(profileId)`
+
+Soft delete: desactiva al usuario, revoca sus sesiones y notifica al session cache.
+
+### `reactivateUser(profileId)`
+
+Reactiva un usuario previamente desactivado.
+
+### `resendInvitation(profileId)`
+
+Regenera la contraseña temporal y reenvía el email de invitación.
+
+### `getUsersMap(tenantId)`
+
+Retorna `Record<userId, UserSummary>` para resolver nombres en listados que solo guardan userId. Solo incluye usuarios activos — un userId ausente significa usuario eliminado (mostrar fallback).
+
+```typescript
+const map = await authClient.getUsersMap(tenantId);
+const nombre = map[form.createdById]?.displayName ?? 'Usuario inactivo';
+```
+
+> **Nota**: `updateUser`, `deleteUser`, `reactivateUser` y `resendInvitation` reciben **profileId** (campo `id` de `UserProfile`), no el `userId`.
+
+---
+
+## TGTAdminClient (server-side)
+
+```typescript
+import { TGTAdminClient } from '@tgtone/auth-sdk/server';
+
+const admin = new TGTAdminClient({
+  coreApiUrl: process.env.CORE_API_URL,
+  token: jwtDelRequest,                  // modo 1: JWT de admin reenviado
+  // maintenanceKey: process.env.MAINTENANCE_API_KEY, // modo 2: server-to-server
+});
+```
+
+El constructor exige exactamente un modo de auth. Expone los mismos métodos de gestión de usuarios listados arriba. Sin dependencias del DOM — funciona en Node.js y Bun.
+
+El modo `maintenanceKey` requiere que Console backend valide el header `x-maintenance-key` (guard `requireAuthOrMaintenanceKey`, presente desde Console v1.38+).

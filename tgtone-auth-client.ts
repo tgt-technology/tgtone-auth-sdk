@@ -266,6 +266,137 @@ export interface UserPermissions {
 }
 
 // ============================================================================
+// TIPOS — Gestión de usuarios (v4.3.0)
+// ============================================================================
+
+/**
+ * Acceso de un usuario a una aplicación (asignación de rol).
+ * Usado en inviteUser y updateUser.
+ */
+export interface ApplicationAccess {
+  applicationId: string;
+  roleId: string;
+}
+
+/**
+ * Datos para invitar (crear) un usuario desde una app.
+ * El backend genera contraseña temporal si no se provee customPassword,
+ * asigna roles y envía email de invitación.
+ */
+export interface InviteUserData {
+  email: string;
+  firstName: string;
+  lastName: string;
+  tenantId: string;
+  /** Rol organizacional (Console). Requerido si no hay applicationAccess. */
+  organizationalRole?: string | null;
+  /** Roles por aplicación. Requerido si no hay organizationalRole. */
+  applicationAccess?: ApplicationAccess[];
+  /** Contraseña personalizada (opcional — el backend genera una temporal si no se provee). */
+  customPassword?: string;
+}
+
+/**
+ * Datos para actualizar un usuario existente.
+ * Solo los campos presentes se modifican.
+ */
+export interface UpdateUserData {
+  firstName?: string;
+  lastName?: string;
+  organizationalRole?: string | null;
+  /**
+   * Lista COMPLETA de accesos a aplicaciones (reemplaza los existentes).
+   * Pasar null o [] revoca el acceso a todas las apps.
+   * Omitir el campo deja los accesos intactos.
+   */
+  applicationAccess?: ApplicationAccess[] | null;
+}
+
+/**
+ * Rol asignado a un usuario en una aplicación (tal como lo retorna listUsers).
+ */
+export interface UserApplicationAssignment {
+  applicationId: string;
+  applicationName: string;
+  roleId: string;
+  roleName: string;
+}
+
+/**
+ * Perfil completo de usuario tal como lo retorna GET /api/v1/users.
+ */
+export interface UserProfile {
+  id: string;
+  userId: string;
+  tenantId: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+  email: string;
+  emailVerified: boolean;
+  isActive: boolean;
+  deletedAt: string | null;
+  organizationalRole: string | null;
+  applications: UserApplicationAssignment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Resumen de usuario para lookup rápido (getUsersMap).
+ * Solo usuarios activos — un userId ausente significa usuario eliminado/inactivo.
+ */
+export interface UserSummary {
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  /** Nombre completo listo para mostrar ("firstName lastName" o email como fallback). */
+  displayName: string;
+  avatarUrl: string | null;
+  organizationalRole: string | null;
+  /** Roles por aplicación: { formflow: ['EDITOR'], console: ['owner'] } */
+  applications: UserApplicationAssignment[];
+}
+
+/**
+ * Rol disponible en una aplicación (para dropdowns de asignación).
+ */
+export interface ApplicationRoleInfo {
+  id: string;
+  key: string;
+  displayName: string;
+  description: string | null;
+  level: number;
+  isDefault: boolean;
+  permissions: PermissionsStructure | null;
+}
+
+/** Respuesta de inviteUser */
+export interface InviteUserResult {
+  message: string;
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  temporaryPassword: string;
+  mustChangePassword: boolean;
+}
+
+/** Respuesta de updateUser */
+export interface UpdateUserResult {
+  message: string;
+  profileId: string;
+  userId: string;
+}
+
+/** Respuesta de deleteUser / reactivateUser / resendInvitation */
+export interface UserActionResult {
+  message: string;
+  userId?: string;
+}
+
+// ============================================================================
 // CLIENTE SSO
 // ============================================================================
 
@@ -1365,7 +1496,14 @@ Posibles causas:
    * Obtener los roles disponibles para una aplicación.
    * @param appId - ID de la aplicación (UUID)
    */
-  async getApplicationRoles(appId: string): Promise<any[]> {
+  /**
+   * Obtiene los roles disponibles de una aplicación.
+   * Útil para poblar dropdowns de asignación de roles en pantallas de gestión de usuarios.
+   *
+   * @param appId - UUID de la aplicación
+   * @returns Lista de roles con id, key, displayName, level, isDefault y permissions
+   */
+  async getApplicationRoles(appId: string): Promise<ApplicationRoleInfo[]> {
     if (!appId) throw new Error('appId es requerido');
     const token = this.getToken();
     if (!token) throw new Error('No hay sesión activa');
@@ -1384,8 +1522,9 @@ Posibles causas:
   /**
    * Listar usuarios de un tenant.
    * @param tenantId - ID del tenant
+   * @returns Perfiles de usuario con email, nombre, roles organizacionales y por aplicación
    */
-  async listUsers(tenantId: string): Promise<any[]> {
+  async listUsers(tenantId: string): Promise<UserProfile[]> {
     if (!tenantId) throw new Error('tenantId es requerido');
     const token = this.getToken();
     if (!token) throw new Error('No hay sesión activa');
@@ -1396,6 +1535,188 @@ Posibles causas:
 
     if (!response.ok) {
       throw new Error(`Error al listar usuarios: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Obtiene un mapa userId → UserSummary para resolución rápida de nombres/emails.
+   * Ideal para mostrar "Creado por Juan Pérez" en listados que solo almacenan userId.
+   *
+   * Solo incluye usuarios activos — un userId ausente significa usuario
+   * eliminado/inactivo (la app debe mostrar un fallback, ej: "Usuario inactivo").
+   *
+   * @param tenantId - ID del tenant
+   * @returns Record con userId como clave y UserSummary como valor
+   *
+   * @example
+   * ```typescript
+   * const usersMap = await auth.getUsersMap(tenantId);
+   * const creador = usersMap[form.createdById]?.displayName ?? 'Usuario inactivo';
+   * ```
+   */
+  async getUsersMap(tenantId: string): Promise<Record<string, UserSummary>> {
+    const users = await this.listUsers(tenantId);
+    const map: Record<string, UserSummary> = {};
+
+    for (const u of users) {
+      if (!u.isActive || u.deletedAt) continue;
+      const displayName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email;
+      map[u.userId] = {
+        userId: u.userId,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        displayName,
+        avatarUrl: u.avatarUrl,
+        organizationalRole: u.organizationalRole,
+        applications: u.applications,
+      };
+    }
+
+    return map;
+  }
+
+  /**
+   * Invita (crea) un usuario en el identity core, le asigna roles y le envía
+   * un email de invitación con contraseña temporal.
+   *
+   * Requiere organizationalRole (acceso a Console) o al menos un applicationAccess.
+   *
+   * @example
+   * ```typescript
+   * const result = await auth.inviteUser({
+   *   email: 'nuevo@empresa.cl',
+   *   firstName: 'Ana',
+   *   lastName: 'González',
+   *   tenantId: session.tenantId,
+   *   applicationAccess: [{ applicationId: formflowAppId, roleId: editorRoleId }],
+   * });
+   * ```
+   */
+  async inviteUser(data: InviteUserData): Promise<InviteUserResult> {
+    if (!data?.email) throw new Error('email es requerido');
+    if (!data?.tenantId) throw new Error('tenantId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/users/invite`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Error en el servidor' }));
+      throw new Error(error.message || `Error al invitar usuario: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Actualiza el perfil de un usuario (nombre, apellido, rol organizacional)
+   * y/o sus roles de aplicación. El session cache notifica a las apps afectadas
+   * para refrescar permisos en tiempo real.
+   *
+   * NOTA: applicationAccess es la lista COMPLETA de accesos (reemplaza los existentes).
+   * Omitir el campo deja los accesos intactos; pasar null/[] revoca todo.
+   *
+   * @param profileId - ID del perfil (campo `id` de UserProfile, NO el userId)
+   * @param data - Campos a actualizar
+   */
+  async updateUser(profileId: string, data: UpdateUserData): Promise<UpdateUserResult> {
+    if (!profileId) throw new Error('profileId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/users/${profileId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Error en el servidor' }));
+      throw new Error(error.message || `Error al actualizar usuario: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Desactiva un usuario (soft delete): marca isActive=false, revoca todas sus
+   * sesiones activas y notifica al session cache.
+   *
+   * @param profileId - ID del perfil (campo `id` de UserProfile)
+   */
+  async deleteUser(profileId: string): Promise<UserActionResult> {
+    if (!profileId) throw new Error('profileId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/users/${profileId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Error en el servidor' }));
+      throw new Error(error.message || `Error al eliminar usuario: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Reactiva un usuario previamente desactivado (soft delete).
+   *
+   * @param profileId - ID del perfil (campo `id` de UserProfile)
+   */
+  async reactivateUser(profileId: string): Promise<UserActionResult> {
+    if (!profileId) throw new Error('profileId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/users/${profileId}/reactivate`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Error en el servidor' }));
+      throw new Error(error.message || `Error al reactivar usuario: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Reenvía el email de invitación a un usuario que aún no verifica su email.
+   * Regenera la contraseña temporal.
+   *
+   * @param profileId - ID del perfil (campo `id` de UserProfile)
+   */
+  async resendInvitation(profileId: string): Promise<UserActionResult> {
+    if (!profileId) throw new Error('profileId es requerido');
+    const token = this.getToken();
+    if (!token) throw new Error('No hay sesión activa');
+
+    const response = await fetch(`${this.config.coreApiUrl}/api/v1/users/${profileId}/resend-invitation`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Error en el servidor' }));
+      throw new Error(error.message || `Error al reenviar invitación: ${response.status} ${response.statusText}`);
     }
 
     return response.json();
