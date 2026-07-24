@@ -204,6 +204,21 @@ describe('TGTAuthClient', () => {
 
       expect(localStorage.getItem('tgtone_refresh_token')).toBeNull();
     });
+
+    it('debe enviar credentials:include para que el browser borre las cookies SSO', async () => {
+      localStorage.setItem('tgtone_auth_token', 'existing-token');
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true
+      });
+
+      await authClient.logout();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/logout'),
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
   });
 
   describe('TC-2.4: localLogout', () => {
@@ -241,6 +256,7 @@ describe('TGTAuthClient', () => {
           headers: expect.objectContaining({
             'Authorization': 'Bearer existing-token',
           }),
+          credentials: 'include',
         })
       );
     });

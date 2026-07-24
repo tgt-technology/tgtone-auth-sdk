@@ -1,5 +1,24 @@
 # Changelog - @tgtone/auth-sdk
 
+## 4.4.0 (2026-07-24)
+
+### Fixed
+- **Loop infinito de autenticación SSO** (`fix-auth-sso-loop`): tras un logout, el siguiente login podía entrar en un ciclo infinito de redirects app ↔ core (~2.5s/ciclo) creando decenas de sesiones fantasma en BD. Reproducido en Firefox, Edge y Chrome. Tres causas combinadas, tres fixes:
+  1. **Logout no borraba las cookies SSO del core**: `logout()` y `localLogout()` hacían `fetch(POST /logout)` cross-origin **sin `credentials: 'include'`** → el navegador descartaba el `Set-Cookie` que borra `tgtone_session`/`tgtone_refresh`. Ahora ambos métodos envían `credentials: 'include'` y el logout cierra la sesión SSO de verdad.
+  2. **Auto-authorize habilitado por sesiones ajenas** (fix en console backend): `GET /login` contaba TODAS las sesiones vivas del usuario sin filtrar por aplicación ni excluir rotadas → cualquier sesión fantasma (30d TTL) reactivaba el flujo OAuth sin pedir password. Ahora el conteo filtra por `applicationId` del `client_id` y excluye sesiones con `rotatedAt`.
+  3. **Ping-pong de refresh tokens entre pestañas**: dos pestañas del mismo origen intercambiaban codes en paralelo y se pisaban el `tgtone_refresh_token` en localStorage, gatillando redirects mutuos infinitos.
+
+### Added
+- **Lock de flujo OAuth multi-pestaña** (`tgtone_oauth_flow_lock` en localStorage, TTL 30s): solo una pestaña ejecuta `authorize()`/callback PKCE; las demás esperan (poll 250ms, máx 15s) y adoptan la sesión resultante. El callback solo se ejecuta en la pestaña dueña del `code_verifier`; pestañas ajenas limpian el `?code=` de la URL y esperan.
+- **Circuit breaker de ciclos de auth**: si se detectan ≥3 ciclos `authorize → callback` dentro de 60s, el SDK deja de redirigir, detiene el monitor de sesión y dispara `onAuthFailure({ code: 'AUTH_LOOP_DETECTED' })` para que la app muestre un error accionable en lugar de recargar por siempre. Contador en `sessionStorage` (aislado por pestaña), reseteado automáticamente por cualquier `onAuthSuccess`.
+- **Nuevo `AuthErrorCode`**: `AUTH_LOOP_DETECTED`.
+
+### Notes
+- **Sin breaking changes**: comportamiento interno de auth; la API pública del SDK no cambia.
+- **Minor bump** (4.3.1 → 4.4.0): nuevas capacidades de coordinación multi-tab y protección anti-loop.
+- Requiere console backend con el filtro de auto-authorize (mismo change) para cerrar la causa raíz #2.
+- Tests nuevos: `tests/oauth-flow-lock.test.ts` (9) y `tests/auth-loop-guard.test.ts` (6). Suite completa: 180 passed.
+
 ## 4.3.0 (2026-07-20)
 
 ### Added

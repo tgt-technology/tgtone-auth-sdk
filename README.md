@@ -185,6 +185,14 @@ UPDATE applications SET oauth_enabled = true WHERE key = 'mi-app';
 
 Adicional: nunca captures el token en una closure al pasarlo a otro SDK (`getToken: () => localStorage.getItem('tgtone_auth_token')` — leer siempre fresco, nunca `getToken: () => token`).
 
+### 6. Multi-pestaña y ciclos de auth (v4.4.0)
+
+Desde 4.4.0 el SDK coordina el flujo OAuth entre pestañas del mismo origen:
+
+- **Lock de flujo** (`tgtone_oauth_flow_lock`, TTL 30s): solo una pestaña ejecuta `authorize()`/callback PKCE. Si abres la app en dos pestañas sin sesión, una corre el flujo y la otra espera (máx 15s) y adopta la sesión — no hay redirects paralelos ni refresh tokens pisados.
+- **Circuit breaker**: si ocurren ≥3 ciclos `authorize → callback` en 60s, el SDK deja de redirigir y dispara `onAuthFailure({ code: 'AUTH_LOOP_DETECTED' })`. Maneja ese código en tu `onAuthFailure` para mostrar una pantalla de error accionable (ej: console redirige a `/login?error=auth_loop_detected`).
+- **Logout con borrado SSO real**: `logout()`/`localLogout()` envían `credentials: 'include'` para que el navegador procese el borrado de las cookies `tgtone_session`/`tgtone_refresh` del core. Sin esto, las cookies quedaban vivas post-logout y el auto-authorize podía reactivar la sesión sin password.
+
 ---
 
 ## Estructura del usuario

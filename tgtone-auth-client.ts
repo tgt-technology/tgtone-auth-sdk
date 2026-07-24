@@ -187,7 +187,8 @@ export type AuthErrorCode =
   | 'SESSION_EXPIRED'
   | 'ACCESS_REVOKED'
   | 'APP_SUBSCRIPTION_LOCKED'
-  | 'TRIAL_EXPIRED';
+  | 'TRIAL_EXPIRED'
+  | 'AUTH_LOOP_DETECTED';
 
 /**
  * Error de autenticación estructurado
@@ -446,6 +447,22 @@ export class TGTAuthClient {
   private _broadcastChannel: BroadcastChannel | null = null;
   /** Handler del evento storage (bind this para poder removerlo) */
   private _storageHandler: ((e: StorageEvent) => void) | null = null;
+  /** ID único de esta pestaña/instancia para el lock de flujo OAuth */
+  private readonly _tabId: string = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  // ── OAuth flow lock (multi-tab) ──
+  private static readonly FLOW_LOCK_KEY = 'tgtone_oauth_flow_lock';
+  private static readonly FLOW_LOCK_TTL_MS = 30 * 1000;
+  private static readonly FLOW_WAIT_TIMEOUT_MS = 15 * 1000;
+  private static readonly FLOW_WAIT_POLL_MS = 250;
+
+  // ── Auth cycle circuit breaker ──
+  private static readonly CYCLE_COUNT_KEY = 'tgtone_auth_cycle_count';
+  private static readonly CYCLE_START_KEY = 'tgtone_auth_cycle_start';
+  private static readonly CYCLE_WINDOW_MS = 60 * 1000;
+  private static readonly CYCLE_MAX = 3;
 
   constructor(config: TGTAuthConfig) {
     this.config = {
@@ -454,6 +471,13 @@ export class TGTAuthClient {
       heartbeatIntervalMs: TGTAuthClient.DEFAULT_HEARTBEAT_INTERVAL_MS,
       ...config,
       allowedRedirectHosts: config.allowedRedirectHosts ?? [config.appDomain],
+    };
+
+    // Wrap onAuthSuccess: cualquier login completado resetea el circuit breaker
+    const userOnSuccess = this.config.onAuthSuccess;
+    this.config.onAuthSuccess = (session: TGTSession) => {
+      this._resetAuthCycles();
+      userOnSuccess(session);
     };
 
     // Derive OAuth clientId from appKey if not explicitly provided
@@ -724,6 +748,22 @@ export class TGTAuthClient {
         const callbackParams = new URLSearchParams(window.location.search);
         const oauthCode = callbackParams.get('code');
         if (oauthCode) {
+          // ── Multi-tab: solo la pestaña dueña (con code_verifier) ejecuta el exchange ──
+          const hasVerifier = !!sessionStorage.getItem('oauth_code_verifier');
+          const flowLock = this._readFlowLock();
+          if (!hasVerifier && flowLock && flowLock.tabId !== this._tabId) {
+            this.log(`🔹 Callback recibido en pestaña ajena al flujo — cediendo a la dueña${label}`);
+            // Limpiar ?code= de la URL para no reintentar
+            window.history.replaceState({}, document.title, window.location.pathname);
+            const completed = await this._waitForFlowCompletion();
+            if (completed) {
+              const adoptedToken = this.getStoredToken();
+              if (adoptedToken) return this.buildSessionFromToken(adoptedToken);
+            }
+            // La dueña no completó → tratar como sin sesión (sin redirigir de inmediato)
+            return null;
+          }
+
           if ((window as any).__oauth_exchange_lock) {
             this.log(`🔹 OAuth callback ya en progreso (lock activo) — ignorando${label}`);
             // Still return the token if first exchange already completed
@@ -743,6 +783,7 @@ export class TGTAuthClient {
           } catch (err: any) {
             this.log(`❌ OAuth callback falló: ${err?.message || err}${label}`);
             (window as any).__oauth_exchange_lock = false;
+            this._releaseFlowLock();
             if (!silent) this.handleNoSession();
             return null;
           }
@@ -1088,6 +1129,9 @@ Posibles causas:
           'Content-Type': 'application/json',
           ...(token && { 'Authorization': `Bearer ${token}` }),
         },
+        // Necesario para que el browser procese el Set-Cookie que borra
+        // tgtone_session/tgtone_refresh en el identity provider.
+        credentials: 'include',
       });
 
       this.currentUser = null;
@@ -1146,6 +1190,8 @@ Posibles causas:
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
+          // Borrar también las cookies SSO del identity provider
+          credentials: 'include',
         }).catch(() => this.log('⚠️ Logout: error al notificar al backend'));
       }
     } finally {
@@ -1301,6 +1347,41 @@ Posibles causas:
       throw new Error('Could not determine redirectUri. Set redirectUri or appDomain in TGTAuthConfig.');
     }
 
+    // ── Multi-tab: si otra pestaña está corriendo el flujo, esperar su resultado ──
+    const existingLock = this._readFlowLock();
+    if (existingLock && existingLock.tabId !== this._tabId) {
+      this.log('🔹 Otra pestaña está ejecutando el flujo OAuth — esperando resultado...');
+      const completed = await this._waitForFlowCompletion();
+      if (completed) {
+        this.log('✅ Flujo completado por otra pestaña — sesión adoptada');
+        const token = this.getStoredToken();
+        if (token) {
+          const session = this.buildSessionFromToken(token);
+          this.config.onAuthSuccess(session);
+        }
+        return;
+      }
+      this.log('⚠️ La pestaña dueña no completó el flujo — retomando');
+    }
+
+    if (!this._acquireFlowLock()) {
+      this.log('⚠️ No se pudo adquirir el lock de flujo OAuth — procediendo de todas formas');
+    }
+
+    // ── Circuit breaker: cortar ciclos authorize→callback repetidos ──
+    const cycleCount = this._incrAuthCycle();
+    if (cycleCount >= TGTAuthClient.CYCLE_MAX) {
+      this.log(`🛑 Circuit breaker: ${cycleCount} ciclos de auth en <60s — deteniendo redirects`);
+      this._releaseFlowLock();
+      this.stopSessionMonitor();
+      this._isRedirecting = false;
+      this.config.onAuthFailure?.({
+        code: 'AUTH_LOOP_DETECTED',
+        message: 'Se detectó un ciclo de autenticación. Intenta nuevamente en unos segundos; si el problema persiste, contacta a soporte.',
+      });
+      return;
+    }
+
     // Flag sincrónico: indica que estamos redirigiendo, antes del primer await
     this._isRedirecting = true;
 
@@ -1392,6 +1473,7 @@ Posibles causas:
 
     // Clean up
     sessionStorage.removeItem('oauth_code_verifier');
+    this._releaseFlowLock();
 
     // Clean URL (remove ?code=...)
     window.history.replaceState({}, document.title, window.location.pathname);
@@ -2379,6 +2461,7 @@ Posibles causas:
       'ACCESS_REVOKED': 'access',
       'APP_SUBSCRIPTION_LOCKED': 'subscription',
       'TRIAL_EXPIRED': 'trial',
+      'AUTH_LOOP_DETECTED': 'unknown',
     };
     return mapping[code] || 'unknown';
   }
@@ -2550,6 +2633,101 @@ Posibles causas:
       this.log('❌ Error en refresh:', error);
       return false;
     }
+  }
+
+  // ==========================================================================
+  // OAUTH FLOW LOCK — coordinación multi-pestaña
+  // ==========================================================================
+
+  /** Lee el lock de flujo OAuth; retorna null si no existe o está expirado */
+  private _readFlowLock(): { tabId: string; timestamp: number } | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(TGTAuthClient.FLOW_LOCK_KEY);
+      if (!raw) return null;
+      const lock = JSON.parse(raw);
+      if (Date.now() - lock.timestamp > TGTAuthClient.FLOW_LOCK_TTL_MS) return null;
+      return lock;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Adquiere el lock de flujo OAuth (best-effort: write + verify) */
+  private _acquireFlowLock(): boolean {
+    if (typeof window === 'undefined') return true;
+    try {
+      localStorage.setItem(TGTAuthClient.FLOW_LOCK_KEY, JSON.stringify({
+        tabId: this._tabId,
+        timestamp: Date.now(),
+      }));
+      const verify = this._readFlowLock();
+      return verify?.tabId === this._tabId;
+    } catch {
+      return true; // storage bloqueado → proceder (comportamiento pre-lock)
+    }
+  }
+
+  /** Libera el lock solo si pertenece a esta pestaña */
+  private _releaseFlowLock(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const lock = this._readFlowLock();
+      if (!lock || lock.tabId === this._tabId) {
+        localStorage.removeItem(TGTAuthClient.FLOW_LOCK_KEY);
+      }
+    } catch { /* noop */ }
+  }
+
+  /**
+   * Espera a que otra pestaña complete el flujo OAuth.
+   * Resuelve true si apareció un access token (flujo completado por la dueña),
+   * false si expiró el timeout o el lock (esta pestaña puede retomar el flujo).
+   */
+  private async _waitForFlowCompletion(): Promise<boolean> {
+    const deadline = Date.now() + TGTAuthClient.FLOW_WAIT_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (this.getStoredToken()) return true;
+      if (!this._readFlowLock()) return false; // lock liberado sin token → retomar
+      await new Promise(r => setTimeout(r, TGTAuthClient.FLOW_WAIT_POLL_MS));
+    }
+    return false;
+  }
+
+  // ==========================================================================
+  // AUTH CYCLE CIRCUIT BREAKER
+  // ==========================================================================
+
+  /**
+   * Incrementa el contador de ciclos authorize→callback en sessionStorage.
+   * Retorna el conteo actual dentro de la ventana de 60s.
+   */
+  private _incrAuthCycle(): number {
+    if (typeof window === 'undefined') return 1;
+    try {
+      const start = parseInt(sessionStorage.getItem(TGTAuthClient.CYCLE_START_KEY) || '0', 10);
+      const now = Date.now();
+      if (!start || now - start > TGTAuthClient.CYCLE_WINDOW_MS) {
+        // Nueva ventana
+        sessionStorage.setItem(TGTAuthClient.CYCLE_START_KEY, String(now));
+        sessionStorage.setItem(TGTAuthClient.CYCLE_COUNT_KEY, '1');
+        return 1;
+      }
+      const count = parseInt(sessionStorage.getItem(TGTAuthClient.CYCLE_COUNT_KEY) || '0', 10) + 1;
+      sessionStorage.setItem(TGTAuthClient.CYCLE_COUNT_KEY, String(count));
+      return count;
+    } catch {
+      return 1;
+    }
+  }
+
+  /** Resetea el contador de ciclos (login completado o flujo manual) */
+  private _resetAuthCycles(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.removeItem(TGTAuthClient.CYCLE_COUNT_KEY);
+      sessionStorage.removeItem(TGTAuthClient.CYCLE_START_KEY);
+    } catch { /* noop */ }
   }
 
   /**
