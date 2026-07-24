@@ -1,6 +1,6 @@
 # API Reference — @tgtone/auth-sdk
 
-> v4.0.1 · SDK de autenticación centralizada para TGT One
+> v4.3.0 · SDK de autenticación centralizada para TGT One
 
 ---
 
@@ -18,7 +18,7 @@ const auth = new TGTAuthClient(config: TGTAuthConfig);
 
 ```typescript
 interface TGTAuthConfig {
-  coreApiUrl: string;              // URL del Core API (ej: https://dev-core.tgtone.cl/api)
+  coreApiUrl: string;              // URL del Core API SIN /api (ej: https://dev-core.tgtone.cl)
   appDomain: string;                // Dominio de la app (window.location.host)
   appKey?: string;                  // Key de la app (ej: 'console'). Requerido en dev
   redirectUri?: string;             // Custom redirect URI (default: appDomain)

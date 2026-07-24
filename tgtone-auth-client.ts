@@ -8,7 +8,7 @@
  * import { TGTAuthClient } from 'tgtone-auth-client';
  * 
  * const auth = new TGTAuthClient({
- *   coreApiUrl: .https://dev-core.tgtone.cl/api.,
+ *   coreApiUrl: 'https://dev-core.tgtone.cl', // sin /api
  *   appDomain: 'zenith.tgtone.cl'
  * });
  * 

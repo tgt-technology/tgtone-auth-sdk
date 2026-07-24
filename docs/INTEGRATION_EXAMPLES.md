@@ -20,7 +20,7 @@ import { useTGTAuth } from '@tgtone/auth-sdk/react';
 
 function App() {
   const { session, loading, logout, hasRole, revokedError } = useTGTAuth({
-    coreApiUrl: import.meta.env.VITE_IDENTITY_URL || 'https://core.tgtone.cl',
+    coreApiUrl: import.meta.env.VITE_CORE_API_URL || 'https://core.tgtone.cl',
     appDomain: window.location.host,
     appKey: import.meta.env.VITE_APP_KEY, // Requerido en dev
     enableHeartbeat: true,

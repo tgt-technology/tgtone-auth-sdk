@@ -228,7 +228,7 @@ sequenceDiagram
 <h3>Config</h3>
 <table>
   <tr><th>Campo</th><th>Tipo</th><th>Default</th><th>Descripción</th></tr>
-  <tr><td><code>coreApiUrl</code></td><td>string</td><td>requerido</td><td>URL del Core API (ej: <code>https://dev-core.tgtone.cl/api</code>)</td></tr>
+  <tr><td><code>coreApiUrl</code></td><td>string</td><td>requerido</td><td>URL del Core API <b>SIN /api</b> (ej: <code>https://dev-core.tgtone.cl</code>)</td></tr>
   <tr><td><code>appDomain</code></td><td>string</td><td>requerido</td><td><code>window.location.host</code></td></tr>
   <tr><td><code>appKey</code></td><td>string</td><td>—</td><td>Key de la app (ej: "baco"). Requerido en dev</td></tr>
   <tr><td><code>clientId</code></td><td>string</td><td>appKey</td><td>OAuth client ID</td></tr>
@@ -308,7 +308,7 @@ sequenceDiagram
   <tr><th>Escenario</th><th>Error</th><th>¿Cuándo?</th></tr>
   <tr>
     <td>Falta <code>coreApiUrl</code> (o se usa <code>identityUrl</code> de v3)</td>
-    <td><code>coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl.<br>Ej: coreApiUrl: "https://dev-core.tgtone.cl/api"</code></td>
+    <td><code>coreApiUrl es requerido. En v4, identityUrl pasó a llamarse coreApiUrl.<br>Ej: coreApiUrl: "https://dev-core.tgtone.cl" (sin /api)</code></td>
     <td>En el constructor</td>
   </tr>
   <tr>
