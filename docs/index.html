@@ -122,7 +122,7 @@
   <div class="container">
     <h1>@tgtone/auth-sdk</h1>
     <div class="sub">Arquitectura, migración v3→v4 y guía de integración para apps del ecosistema TGT One</div>
-    <div><span class="badge-v">v4.0.1</span> <span class="badge-v badge-red">breaking</span></div>
+    <div><span class="badge-v">v4.3.0</span> <span class="badge-v badge-red">breaking</span></div>
   </div>
 </header>
 
@@ -338,7 +338,7 @@ sequenceDiagram
 <section id="tests">
 <h2>Tests</h2>
 
-<p><strong>111 tests, 5 suites, 0 fallos.</strong></p>
+<p><strong>164 tests, 7 suites, 0 fallos.</strong></p>
 
 <table>
   <tr><th>Suite</th><th>Tests</th><th>Cubre</th></tr>
@@ -363,7 +363,7 @@ sequenceDiagram
 
 <footer>
   <div class="container">
-    @tgtone/auth-sdk v4.0.1 — TGT Technology — Sin publicar cambios
+    @tgtone/auth-sdk v4.3.0 — TGT Technology — Sin publicar cambios
   </div>
 </footer>
 
@@ -404,6 +404,13 @@ function initGraph(containerId, data, opts) {
   const h = opts.height || container.clientHeight || 300;
   container.style.width = w + 'px';
   container.style.height = h + 'px';
+
+  // Fallback SVG si G6 no cargó (file://, CDN caído, ad-blocker)
+  if (typeof G6 === 'undefined') {
+    renderStaticArch(container, data, w, h);
+    return null;
+  }
+
   let graph;
   try {
     const graphOpts = {
@@ -418,8 +425,46 @@ function initGraph(containerId, data, opts) {
     graph.render();
     try { const cv = graph.getCanvas(); if (cv && cv.getContainer()) { cv.getContainer().addEventListener('wheel', function(e) { if (e.ctrlKey || e.metaKey) { e.preventDefault(); e.stopPropagation(); var d = e.deltaY > 0 ? 0.88 : 1.12; graph.zoomTo(Math.max(0.2, Math.min(5, graph.getZoom() * d))); } }, { passive: false }); } } catch(_) {}
     graph.on('canvas:dblclick', function() { graph.zoomTo(1); graph.fitView({ padding: [40, 40] }); });
-  } catch (err) { console.error('[G6]', containerId, err); return null; }
+  } catch (err) { console.error('[G6]', containerId, err); renderStaticArch(container, data, w, h); return null; }
   return graph;
+}
+
+function renderStaticArch(container, data, w, h) {
+  const colors = { surface: '#1c2128', border: '#30363d', text: '#e6edf3', muted: '#8b949e', build: '#58a6ff', deploy: '#3fb950', server: '#f78166', transfer: '#39d2c0' };
+  // Extraer nodos y edges de data (formato G6: { nodes: [{id, style:{x,y,size,labelText,...}}], edges: [{source,target,style:{labelText}}] })
+  const n = data?.nodes || [];
+  const e = data?.edges || [];
+  const pad = 20, r = 8;
+  const nMap = {};
+  n.forEach(function(node) {
+    var s = node.style || {};
+    nMap[node.id] = { x: s.x || 0, y: s.y || 0, w: (s.size && Array.isArray(s.size)) ? s.size[0] : 160, h: (s.size && Array.isArray(s.size)) ? s.size[1] : 50, label: s.labelText || node.id, color: s.stroke || colors.border, fill: s.fill || colors.surface };
+  });
+  var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '" xmlns="http://www.w3.org/2000/svg" style="background:#0d1117">';
+  // Flechas (edges)
+  e.forEach(function(edge) {
+    var src = nMap[edge.source], tgt = nMap[edge.target];
+    if (!src || !tgt) return;
+    var sx = src.x + src.w, sy = src.y + src.h/2, tx = tgt.x, ty = tgt.y + tgt.h/2;
+    svg += '<line x1="' + sx + '" y1="' + sy + '" x2="' + tx + '" y2="' + ty + '" stroke="' + colors.border + '" stroke-width="2" marker-end="url(#arrow)"/>';
+    var label = edge.style?.labelText;
+    if (label) { var mx = (sx + tx) / 2, my = (sy + ty) / 2 - 8; svg += '<rect x="' + (mx - label.length*4 - 4) + '" y="' + (my - 9) + '" width="' + (label.length*8 + 8) + '" height="18" rx="4" fill="#0d1117" opacity="0.92"/><text x="' + mx + '" y="' + (my+3) + '" fill="' + colors.muted + '" font-size="11" text-anchor="middle" font-family="JetBrains Mono,monospace">' + label + '</text>'; }
+  });
+  svg += '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="' + colors.border + '"/></marker></defs>';
+  // Nodos
+  n.forEach(function(node) {
+    var s = nMap[node.id];
+    if (!s) return;
+    svg += '<rect x="' + (s.x + 1) + '" y="' + (s.y + 1) + '" width="' + (s.w - 2) + '" height="' + (s.h - 2) + '" rx="' + r + '" fill="' + s.fill + '" stroke="' + s.color + '" stroke-width="1.5"/>';
+    var lines = (s.label || '').replace(/\\n/g, '\n').split('\n');
+    var lineH = 14;
+    var startY = s.y + s.h/2 - ((lines.length - 1) * lineH)/2 + 4;
+    lines.forEach(function(line, li) {
+      svg += '<text x="' + (s.x + s.w/2) + '" y="' + (startY + li * lineH) + '" fill="' + (li === 0 ? (node.color || s.color || colors.text) : colors.muted) + '" font-size="' + (li === 0 ? 12 : 10.5) + '" text-anchor="middle" font-family="Inter,sans-serif">' + (line.trim() || '') + '</text>';
+    });
+  });
+  svg += '</svg>';
+  container.innerHTML = svg;
 }
 
 function addToolbar(graphId, graph, origData) {
