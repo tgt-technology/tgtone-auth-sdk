@@ -1,5 +1,26 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.0.0 (2026-07-24)
+
+### Changed (BREAKING — modelo de sesión única)
+
+**Arquitectura**: se reemplazó el modelo de "N sesiones por usuario (una por app/refresh rotation)" por **una sola sesión por usuario** con campo `activeApps: string[]` (JSON) que registra en qué aplicaciones está logueado.
+
+Eliminados:
+- **Circuit breaker** (`AUTH_LOOP_DETECTED`, `_incrAuthCycle`, `_resetAuthCycles`) — ya no es necesario. Sin sesiones fantasma no hay loop posible.
+- **Lock multi-tab** (`_acquireFlowLock`, `_releaseFlowLock`, `_waitForFlowCompletion`) — una sola sesión no puede pisarse entre pestañas.
+- **Multi-tab sync** (`_initMultiTabSync`, `_broadcastChannel`, `_storageHandler`) — sin rotación de refresh token no hay nada que sincronizar.
+- **WS events**: simplificados de 4 a 3 tipos: `access_revoked`, `roles_changed`, `session_terminated`.
+
+Mantenido:
+- `credentials: 'include'` en `logout()` y `localLogout()`.
+- Heartbeat / session monitor.
+
+### Notes
+- **Major bump** (4.4.0 → 5.0.0): cambios internos en el modelo de sesión y eventos WS. Sin breaking en la API pública de uso (login, logout, checkSession, hasRole, etc.).
+- Requiere console backend v1.35.0+ con migración Prisma `single_session_model`.
+- Tests: 165 pass / 2 skip (7 suites).
+
 ## 4.4.0 (2026-07-24)
 
 ### Fixed
