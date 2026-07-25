@@ -33,6 +33,14 @@ Browser (SPA)                     Backend Core (Elysia)
      │  Inicia session monitor            │
 ```
 
+Auto-authorize (SSO entre apps):
+```
+App A → core/login → backend lee cookie tgtone_session
+  → si existe y válida → upsert Session (activeApps agrega app A)
+  → genera auth code → 302 redirect a App A
+  → sin mostrar login
+```
+
 ### `isRedirecting()`
 
 El flujo `authorize()` es asíncrono (tiene `await import('./pkce')`). Entre que se inicia y se ejecuta `window.location.href`, React puede renderizar con `loading=false` y `session=null`, causando una página en blanco.
@@ -56,26 +64,26 @@ Browser (auth-sdk)             Session Cache (Linode)          Backend (Elysia)
      │                                │                            │
      │                                │                            │  POST /notify/logout
      │                                │  ◀────────────────────────  │
-     │                                │  removeUserActive(userId)  │
-     │                                │  publish 'user:revoked'    │
+     │                                │  publish sessionTerminated │
      │                                │                            │
-     │  WS { type: 'SESSION_REVOKED',    │                            │
-     │       payload: { userId,          │                            │
-     │       reason:'logout' } }         │                            │
+     │  WS { type: 'session_terminated' }  │                      │
      │  ◀────────────────────────────  │                            │
      │                                │                            │
      │  handleSessionRevoked() o       │                            │
-     │  redirectToLogin() (si logout)  │                            │
+     │  redirectToLogin()              │                            │
 ```
 
-### Eventos WS
+### Eventos WS (v5.0.0)
 
 | WS type | Cuándo | Quién recibe | Formato |
 |---------|--------|-------------|---------|
-| `SESSION_REVOKED` | Logout desde otra app | Usuario específico | `{ type, payload: { userId, reason } }` |
-| `ROLES_CHANGED` | Roles modificados | Usuario específico | `{ type, payload: { appKey, roles } }` |
-| `ACCESS_REVOKED` | Acceso a app removido | Usuario específico | `{ type, payload: { appKey, reason } }` |
-| `SESSION_REVOKED_BULK` | Tenant suspendido/eliminado | Broadcast a todos | `{ type, payload: { tenantId, reason } }` |
+| `session_terminated` | Logout desde cualquier app | Usuario específico (sendToUser) | `{ type, payload: { userId } }` |
+| `roles_changed` | Roles modificados | Usuario específico | `{ type, payload: { appKey, roles } }` |
+| `access_revoked` | Acceso a app removido o tenant eliminado | Usuario específico | `{ type, payload: { appKey, reason } }` — reason: `PERMISSION_REMOVED` \| `TENANT_DELETED` |
+
+**Eliminados en v5.0.0:**
+- `SESSION_REVOKED` → reemplazado por `session_terminated`
+- `SESSION_REVOKED_BULK` → eliminado (el filtrado ahora es server-side con `sendToUser`, no `broadcastToAll`)
 
 ---
 
@@ -83,7 +91,7 @@ Browser (auth-sdk)             Session Cache (Linode)          Backend (Elysia)
 
 ### Detectado en:
 
-1. **WebSocket** — mensaje `SESSION_REVOKED` / `ROLES_CHANGED` / `ACCESS_REVOKED` → reacción inmediata
+1. **WebSocket** — mensaje `session_terminated` / `roles_changed` / `access_revoked` → reacción inmediata
 2. **Refresh JWT** — refresh falla con 401 → ejecuta `onSessionRevoked`
 3. **Interceptor HTTP** — cualquier request 401 con código de revocación → bloquea sesión
 4. **checkSession()** — al cargar la app detecta token inválido
@@ -97,9 +105,46 @@ handleSessionRevoked(error)
   → Sino, redirige a /blocked?type={...}&redirect={origin}
 ```
 
-### Razón `logout` vs otros
+---
 
-Cuando el WS envía `SESSION_REVOKED` con `reason: 'logout'`, el SDK entiende que fue un logout voluntario desde otra app y redirige al login (sin blocked page). Para otros casos (user eliminado, tenant suspendido) muestra la blocked page.
+## Logout
+
+```
+SDK logout():
+  1. fetch(POST /api/v1/auth/logout, { credentials: 'include' })
+     → backend borra la sesión única del usuario (Session.delete)
+     → backend emite Set-Cookie con Max-Age=0 para tgtone_session y tgtone_refresh
+     → backend publica session_terminated vía WS
+  2. Limpia localStorage (access token, refresh token, permisos en caché)
+  3. window.location.href = coreApiUrl + '/login'
+     (navega al login del core — nunca queda el usuario en pantalla en blanco)
+```
+
+**Nota:** `localLogout()` limpia localStorage pero **no redirige** al core — usado por apps como Hub que manejan su propio login.
+
+---
+
+## Modelo de sesión (v5.0.0)
+
+Desde v5.0.0 se usa **una sola sesión por usuario** con `activeApps: string[]`:
+
+```prisma
+model Session {
+  id               String   @id @default(uuid())
+  userId           String   @unique                     // ← UNA por usuario
+  refreshTokenHash String   @unique                     // sin rotación
+  activeApps       Json     @default("[]")              // ["console", "baco"]
+  expiresAt        DateTime?
+  deviceInfo, browser, os, ipAddress, ...
+  user             User     @relation(fields: [userId], references: [id])
+}
+```
+
+**Lo que se eliminó:**
+- `tokenHash` → ahora `refreshTokenHash`
+- `rotatedAt` → sin rotación, el mismo refresh token vale hasta expirar
+- `applicationId` → las apps ahora se trackean en `activeApps`
+- Circuit breaker, lock multi-tab, multi-tab sync (ya no son necesarios — una sesión no puede pisarse)
 
 ---
 
@@ -125,16 +170,11 @@ El backend setea dos cookies HttpOnly en su dominio (dev-core.tgtone.cl / core.t
 
 **Flujo SSO (auto-authorize):**
 1. App A redirige al browser a `core/login?client_id=...&redirect_uri=...&code_challenge=...`
-2. Backend lee `tgtone_session` → si es válida, genera auth code y redirige de vuelta (sin mostrar login)
-3. Si `tgtone_session` expiró (15 min), backend lee `tgtone_refresh` → valida en BD → si es válida, rota tokens, setea cookies frescas, genera auth code y redirige
+2. Backend lee `tgtone_session` → si válida, upsert Session (agrega app a `activeApps`), genera auth code y redirige (sin mostrar login)
+3. Si `tgtone_session` expiró (15 min), backend lee `tgtone_refresh` → valida en BD → upsert Session, genera auth code y redirige
 4. Si ambas expiraron → muestra formulario de login
 
-**Desde v4.2.0**, el SDK envía `credentials: 'include'` en los fetch de `_executeRefresh()`, `handleCallback()` y `exchangeAccessToken()`. Esto permite que el browser reciba y almacene las cookies `Set-Cookie` del backend cross-origin (requiere CORS con `credentials: true`, ya configurado en el backend).
-
-**Grace period en rotación (v4.2.0):**
-- `validateAndRotate` no borra la sesión vieja inmediatamente. La marca con `rotatedAt` y la borra después de 60s.
-- Si dos tabs/apps hacen refresh simultáneo, la segunda no dispara `revokeAllSessions`.
-- El campo `rotatedAt` en el modelo `Session` requiere migración `20260710000538_add_session_rotated_at`.
+**Sin rotación:** el refresh token no se rota. El mismo vale hasta expirar (30 días). El backend solo valida que exista en BD, que el usuario esté activo, y que el tenant esté activo.
 
 ```
 localStorage  → persiste entre pestañas y sesiones del browser

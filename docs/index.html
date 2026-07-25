@@ -499,7 +499,7 @@ const archData = {
     edge('app', 'client', 'config: coreApiUrl'),
     edge('client', 'core', 'POST /api/v1/auth'),
     edge('client', 'ws', 'WS connect'),
-    edge('ws', 'client', 'SESSION_REVOKED'),
+    edge('ws', 'client', 'session_terminated'),
   ],
 };
 
