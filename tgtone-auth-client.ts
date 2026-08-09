@@ -1391,6 +1391,18 @@ Posibles causas:
     const code = urlParams.get('code');
     const error = urlParams.get('error');
     const state = urlParams.get('state');
+    // device_id viene del core (fuente de verdad del browser/device). Todas las apps
+    // del mismo browser reciben el MISMO device_id del core → comparten una sola sesión.
+    // Sobrescribe el deviceId local (que quedaría per-dominio en localStorage).
+    const coreDeviceId = urlParams.get('device_id');
+    if (coreDeviceId) {
+      this.deviceId = coreDeviceId;
+      try {
+        localStorage.setItem(TGTAuthClient.DEVICE_ID_KEY, coreDeviceId);
+      } catch { /* fallback: sin localStorage */
+      }
+      this.log(`🔹 Device ID del core: ${coreDeviceId}`);
+    }
 
     if (error) {
       throw new Error(`OAuth error: ${error}`);
