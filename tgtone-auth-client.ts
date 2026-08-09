@@ -511,16 +511,44 @@ export class TGTAuthClient {
    * una única sesión/refresh token entre todas las apps del ecosistema, mientras que
    * distintos browsers/dispositivos tienen sesiones independientes.
    */
-  private ensureDeviceId(): string | null {
-    if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null;
+  /**
+   * Lee la cookie `tgtone_device` del browser. La cookie vive en `.tgtone.cl`
+   * (cross-domain), así que TODAS las apps del mismo browser la ven. Es la
+   * fuente de verdad del deviceId compartido entre apps (definida por el core).
+   */
+  private readDeviceCookie(): string | null {
+    if (typeof document === 'undefined') return null;
     try {
-      let id = localStorage.getItem(TGTAuthClient.DEVICE_ID_KEY);
-      if (!id) {
-        id = typeof crypto !== 'undefined' && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        localStorage.setItem(TGTAuthClient.DEVICE_ID_KEY, id);
+      const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('tgtone_device='));
+      if (!match) return null;
+      const value = match.split('=').slice(1).join('=');
+      return value || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private ensureDeviceId(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      // 1. Cookie `tgtone_device` del core (.tgtone.cl cross-domain) — fuente de verdad.
+      const fromCookie = this.readDeviceCookie();
+      if (fromCookie) {
+        // Cachearlo en localStorage para velocidad de lectura no-blocking.
+        try { localStorage.setItem(TGTAuthClient.DEVICE_ID_KEY, fromCookie); } catch { /* noop */ }
+        return fromCookie;
       }
+
+      // 2. Fallback: localStorage (cache del valor del core).
+      let id = localStorage.getItem(TGTAuthClient.DEVICE_ID_KEY);
+      if (id) return id;
+
+      // 3. Último recurso: generar UUID propio. El próximo flujo OAuth lo
+      //    reemplazará por el device_id del core (asignado en la cookie).
+      id = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      try { localStorage.setItem(TGTAuthClient.DEVICE_ID_KEY, id); } catch { /* noop */ }
       return id;
     } catch {
       // localStorage no disponible → sin deviceId persistente; el backend usa fallback legacy.

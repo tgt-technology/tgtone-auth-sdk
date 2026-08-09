@@ -1,5 +1,18 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.1.2 (2026-08-09)
+
+### Fixed — deviceId compartido leído desde cookie `tgtone_device` en el constructor (D8.1)
+
+**Corrección**: en 5.1.1 el SDK adoptaba el `device_id` del core solo en `handleCallback` (cuando el redirect traía `?device_id=`). Pero en el constructor inicializaba `this.deviceId` desde `localStorage` (per-dominio). En recargas / auto-restauración sin `?code=`, cada app seguía con su propio localStorage → **2 sesiones separadas** y logout sin propagar.
+
+**Fix**: el SDK ahora **lee la cookie `tgtone_device`** (`.tgtone.cl` cross-domain, fuente de verdad del core) en el constructor, ANTES de generar el propio. Orden de resolución:
+1. Cookie `tgtone_device` (core, compartida entre apps del browser) → se cachea en localStorage
+2. Fallback: localStorage (cache del valor del core)
+3. Último recurso: UUID propio (reemplazado por el del core en el próximo flujo OAuth)
+
+Así todas las apps del mismo browser usan el MISMO deviceId desde el arranque → **una sola sesión** y logout global funciona.
+
 ## 5.1.1 (2026-08-09)
 
 ### Fixed — Device ID compartido entre apps del mismo browser (D8)
