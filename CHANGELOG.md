@@ -1,5 +1,21 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.2.2 (2026-08-09)
+
+### Fixed — No desloguearse por un SESSION_REVOKED dirigido a otra sesión (loop nexo)
+
+**Corrección**: al hacer logout dirigido (por browser/dispositivo) en una app, el `SESSION_REVOKED` con `sessionId` se reparte por WS a **todos** los sockets del usuario. El SDK en las otras apps debía ignorarlo si no correspondía a su sesión, pero **no lo ignoraba** → se deslogueaba sin razón → `redirectToLogin()` → `authorize()` → el core auto-autoriza → devuelve `?code=` nuevo → **loop de recargas con code nuevo** (y la caída deslogueaba también a notifications-sdk, que consume el mismo JWT).
+
+**Reproducido y confirmado empíricamente**: nexo con `sid` presente y distinto al `sessionId` del evento deslogueó su token local y entró en loop por unos segundos. La causa: el filtro por alcance dependía de `currentUser.sid`, que puede estar null cuando el WS entrega el evento antes de poblar `currentUser`.
+
+**Fix**:
+- El filtro de alcance en `SESSION_REVOKED` ahora desloguea SOLO si el `sessionId` del evento coincide con el sid de la sesión actual. Si el sid difiere, o no se puede confirmar que sea el de la sesión actual → **ignora** (no desloguea, no redirige).
+- Nuevo helper `getCurrentSidFromToken()`: deriva el sid del JWT guardado cuando `currentUser.sid` está null (timing WS al montar), garantizando que el filtro por alcance SIEMPRE tenga el sid disponible.
+- Los eventos globales (sin `sessionId`) siguen deslogueando (logout global, suspensión).
+- Tests nuevos que cubren el caso nexo (currentUser sin sid pero token con sid distinto/coincidente).
+
+Ver change OpenSpec `sdk-revoke-session-scope-loop`.
+
 ## 5.2.1 (2026-08-09)
 
 ### Fixed — Logout de la app es POR BROWSER (no global)

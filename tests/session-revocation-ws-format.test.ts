@@ -152,4 +152,41 @@ describe('auth-sdk: procesamiento WS de revocación (formatos de realtime)', () 
     simulate({ type: 'SESSION_REVOKED', payload: { userId: 'user-abc', reason: 'logout' } });
     expect(redirectSpy).toHaveBeenCalled();
   });
+
+  test('CASO BUG nexo: currentUser sin sid pero token con sid distinto → NO desloguea por revoke a otra sesión', () => {
+    // Simula nexo donde currentUser.sid quedó null (no poblado) pero el token guardado
+    // tiene sid = session-FFX (la sesión real). Llega revoke dirigido a session-EDGE (otra).
+    const client = new TGTAuthClient({
+      coreApiUrl: 'http://localhost:3001', appDomain: 'console.tgtone.cl',
+      appKey: 'console', sessionCacheUrl: 'https://session.tgtone.cl', heartbeatIntervalMs: 60000, debug: false,
+    } as any);
+    // Token guardado tiene sid (sesión real), currentUser.sid null (no poblado)
+    localStorage.setItem('tgtone_auth_token', createMockJWT({ sub: 'user-abc', sid: 'session-FFX' }));
+    (client as any).currentUser = { sub: 'user-abc', sid: null }; // ← el caso del bug (currentUser sin sid)
+    (client as any).currentSession = {};
+    client.startSessionMonitor();
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    ws.onopen?.();
+    ws.onmessage?.({ data: JSON.stringify({ type: 'SESSION_REVOKED', payload: { userId: 'user-abc', sessionId: 'session-EDGE', reason: 'logout' } }) } as any);
+    // Debe IGNORAR (session-EDGE ≠ sid derivado del token session-FFX) → no desloguea
+    expect(redirectSpy).not.toHaveBeenCalled();
+    expect(localStorage.getItem('tgtone_auth_token')).not.toBeNull();
+  });
+
+  test('CASO BUG nexo: currentUser sin sid y token con sid COINCIDENTE → SÍ desloguea (es su sesión)', () => {
+    const client = new TGTAuthClient({
+      coreApiUrl: 'http://localhost:3001', appDomain: 'console.tgtone.cl',
+      appKey: 'console', sessionCacheUrl: 'https://session.tgtone.cl', heartbeatIntervalMs: 60000, debug: false,
+    } as any);
+    localStorage.setItem('tgtone_auth_token', createMockJWT({ sub: 'user-abc', sid: 'session-FFX' }));
+    (client as any).currentUser = { sub: 'user-abc', sid: null };
+    (client as any).currentSession = {};
+    client.startSessionMonitor();
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    ws.onopen?.();
+    ws.onmessage?.({ data: JSON.stringify({ type: 'SESSION_REVOKED', payload: { userId: 'user-abc', sessionId: 'session-FFX', reason: 'logout' } }) } as any);
+    // Reproduce el fix: deriva sid del token (session-FFX) que COINCIDE → desloguea
+    expect(redirectSpy).toHaveBeenCalled();
+    expect(localStorage.getItem('tgtone_auth_token')).toBeNull();
+  });
 });

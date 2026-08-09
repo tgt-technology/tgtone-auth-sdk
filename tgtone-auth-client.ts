@@ -2070,13 +2070,20 @@ Posibles causas:
             case 'SESSION_TERMINATED': {
               const myUserId = this.currentUser?.sub;
               const revUserId = data.payload?.userId;
-              const mySid = this.currentUser?.sid;
-              // Cierre DIRIGIDO: el evento trae sessionId → solo desloguear si
-              // corresponde a MI sesión. Si es de otra sesión/dispositivo, ignoro.
+              // sid de la sesión actual. Si currentUser no está poblado (timing con el WS),
+              // lo derivamos del token guardado para que el filtro por alcance SIEMPRE
+              // tenga el sid disponible.
+              const mySid = this.currentUser?.sid ?? this.getCurrentSidFromToken();
+              // Cierre DIRIGIDO: el evento trae sessionId → desloguear SOLO si corresponde
+              // a MI sesión. Si es de otra sesión (sid distinto), o no podemos CONFIRMAR
+              // que es la mía (sid desconocido), IGNORAMOS — nunca desloguear por un
+              // revoke dirigido a otra sesión (evita el loop ?code= y la caída de auth/notifications).
               const revSessionId = data.payload?.sessionId;
-              if (revSessionId && mySid && revSessionId !== mySid) {
-                this.log(`🟡 Session Cache: SESSION_REVOKED para otra sesión (${revSessionId}), ignoro`);
-                break;
+              if (revSessionId) {
+                if (!mySid || revSessionId !== mySid) {
+                  this.log(`🟡 Session Cache: SESSION_REVOKED para otra sesión (${revSessionId}), ignoro`);
+                  break;
+                }
               }
               if (myUserId && myUserId === revUserId) {
                 this.log('🚫 Session Cache: sesión revocada instantáneamente');
@@ -2459,6 +2466,22 @@ Posibles causas:
     };
 
     return this.currentSession;
+  }
+
+  /**
+   * Deriva el `sid` de la sesión actual desde el token guardado (JWT claim `sid`).
+   * Se usa para el filtro por alcance de SESSION_REVOKED cuando `currentUser` no
+   * está poblado todavía (timing con el WS al montar la app).
+   */
+  private getCurrentSidFromToken(): string | null {
+    try {
+      const token = this.getStoredToken();
+      if (!token) return null;
+      const payload = jwtDecode<JWTPayload>(token);
+      return (payload as any).sid ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private async exchangeAccessToken(): Promise<boolean> {
