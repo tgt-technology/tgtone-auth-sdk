@@ -2058,8 +2058,13 @@ Posibles causas:
       this.ws.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
-          switch (data.type) {
-            case 'session_terminated': {
+          // Normalizar el tipo de evento a UPPER_SNAKE para que cuadre con lo que
+          // realtime envía (SESSION_REVOKED, ROLES_CHANGED, ACCESS_REVOKED,
+          // SESSION_REVOKED_BULK) y mantenga retro-compatibilidad con snake_case.
+          const type = String(data.type || '').toUpperCase().replace(/-/g, '_');
+          switch (type) {
+            case 'SESSION_REVOKED':
+            case 'SESSION_TERMINATED': {
               const myUserId = this.currentUser?.sub;
               const revUserId = data.payload?.userId;
               if (myUserId && myUserId === revUserId) {
@@ -2084,14 +2089,14 @@ Posibles causas:
               }
               break;
             }
-            case 'roles_changed': {
+            case 'ROLES_CHANGED': {
               const { appKey, roles } = data.payload || {};
               this.log('🔄 Session Cache: roles cambiados', appKey, roles);
               this.clearPermissionsCache();
               this.config.onPermissionsChanged?.(appKey, roles);
               break;
             }
-            case 'access_revoked': {
+            case 'ACCESS_REVOKED': {
               const { appKey, reason } = data.payload || {};
               this.log('🚫 Session Cache: acceso revocado', appKey, reason);
               this.clearPermissionsCache();
@@ -2106,6 +2111,27 @@ Posibles causas:
                   code: 'ACCESS_REVOKED' as AuthErrorCode,
                   message: `Tu acceso a ${appKey} fue revocado: ${reasonLabel}.`,
                 });
+              }
+              break;
+            }
+            case 'SESSION_REVOKED_BULK': {
+              // Revocación masiva (tenant suspendido/eliminado). Realtime lo
+              // transmite a todos; desloguear solo si el tenant coincide.
+              const { tenantId, reason } = data.payload || {};
+              const myTenant = this.getTenantId();
+              if (tenantId && myTenant && tenantId === myTenant) {
+                this.log('🚫 Session Cache: tenant revocado (bulk)', tenantId, reason);
+                this.stopSessionMonitor();
+                this.handleSessionRevoked({
+                  code: 'TENANT_INACTIVE',
+                  message: reason === 'tenant_deleted'
+                    ? 'Tu organización fue eliminada.'
+                    : 'Tu organización está suspendida.',
+                });
+              } else if (!myTenant) {
+                // Sin tenant conocido, no podemos confirmar — ignorar para no
+                // desloguear usuarios de otros tenants por accidente.
+                this.log('🟡 Session Cache: SESSION_REVOKED_BULK ignorado (sin tenant en sesión)');
               }
               break;
             }

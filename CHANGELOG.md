@@ -1,5 +1,21 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.1.3 (2026-08-09)
+
+### Fixed — Procesamiento de eventos WS de revocación (cuadre con tgtone-realtime)
+
+**Corrección crítica**: el `onmessage` del WebSocket del session cache esperaba tipos de evento `session_terminated`, `roles_changed`, `access_revoked` (snake_case), pero `tgtone-realtime` envía `SESSION_REVOKED`, `ROLES_CHANGED`, `ACCESS_REVOKED`, `SESSION_REVOKED_BULK` (UPPER_SNAKE). Como el `switch` era case-sensitive, **ningún case coincidía → el SDK ignoraba los eventos de revocación → el logout global entre apps no funcionaba** (una app no se deslogueaba cuando otra cerraba sesión).
+
+**Fix**:
+- Se normaliza `data.type` a `UPPER_SNAKE` (`.toUpperCase().replace(/-/g,'_')`) antes del `switch` → soporta los formatos de realtime y mantiene retro-compatibilidad con snake_case legacy.
+- `SESSION_REVOKED` (y legacy `SESSION_TERMINATED`): desloguea local (detiene monitor, limpia tokens+permisos, redirect login si `reason==='logout'`, sino blocked page).
+- `ROLES_CHANGED`: limpia caché permisos + `onPermissionsChanged`.
+- `ACCESS_REVOKED`: limpia permisos + blocked page si es la app actual.
+- `SESSION_REVOKED_BULK` (nuevo): desloguea si `payload.tenantId` coincide con el tenant de la sesión.
+- **Tests nuevos** que cubren los formatos exactos de realtime (5 tests en `session-revocation-ws-format.test.ts`).
+
+Esto completa la cadena de revocación del logout global: **auth-sdk ↔ backend console ↔ realtime** (ver change OpenSpec `sdk-ws-revocation-event-types`).
+
 ## 5.1.2 (2026-08-09)
 
 ### Fixed — deviceId compartido leído desde cookie `tgtone_device` en el constructor (D8.1)
