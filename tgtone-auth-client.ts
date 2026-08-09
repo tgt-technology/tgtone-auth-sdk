@@ -418,6 +418,7 @@ export class TGTAuthClient {
   private static readonly TOKEN_KEY = 'tgtone_auth_token';
   private static readonly TEMP_TOKEN_KEY = 'tgtone_temp_token';
   private static readonly REFRESH_TOKEN_KEY = 'tgtone_refresh_token';
+  private static readonly DEVICE_ID_KEY = 'tgtone_device_id';
   
   private static readonly DEFAULT_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
   private static readonly REFRESH_BEFORE_EXPIRY_MS = 5 * 60 * 1000;
@@ -433,6 +434,9 @@ export class TGTAuthClient {
   private permissionsCacheExpiry: number = 0;
   private static readonly PERMISSIONS_CACHE_TTL = 30 * 60 * 1000;
   private refreshPromise: Promise<boolean> | null = null;
+
+  /** Identificador de browser-dispositivo (UUID persistido en localStorage) */
+  private deviceId: string | null = null;
 
   // ── Session Cache (WebSocket) ──
   private ws: WebSocket | null = null;
@@ -497,7 +501,51 @@ export class TGTAuthClient {
       }
     }
 
+    // Inicializar (o reutilizar) el deviceId de este browser/dispositivo.
+    this.deviceId = this.ensureDeviceId();
+  }
 
+  /**
+   * Genera o lee el identificador de dispositivo (UUID) persistido en localStorage.
+   * El deviceId define la "sesión por browser-dispositivo": un mismo browser comparte
+   * una única sesión/refresh token entre todas las apps del ecosistema, mientras que
+   * distintos browsers/dispositivos tienen sesiones independientes.
+   */
+  private ensureDeviceId(): string | null {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null;
+    try {
+      let id = localStorage.getItem(TGTAuthClient.DEVICE_ID_KEY);
+      if (!id) {
+        id = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        localStorage.setItem(TGTAuthClient.DEVICE_ID_KEY, id);
+      }
+      return id;
+    } catch {
+      // localStorage no disponible → sin deviceId persistente; el backend usa fallback legacy.
+      return null;
+    }
+  }
+
+  /**
+   * Devuelve el deviceId de este browser/dispositivo, o null si no está disponible.
+   * Útil para debugging y para apps que quieran exponer el dispositivo actual.
+   */
+  getDeviceId(): string | null {
+    return this.deviceId;
+  }
+
+  /** Headers comunes con el deviceId (si está disponible) para llamadas de auth. */
+  private authHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(extra || {}),
+    };
+    if (this.deviceId) {
+      headers['X-Device-Id'] = this.deviceId;
+    }
+    return headers;
   }
 
   // ==========================================================================
@@ -531,9 +579,7 @@ export class TGTAuthClient {
 
       const response = await fetch(this.getSignupUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.authHeaders(),
         body: JSON.stringify(data),
       });
 
@@ -602,9 +648,7 @@ export class TGTAuthClient {
 
       const response = await fetch(this.getLoginApiUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.authHeaders(),
         body: JSON.stringify({
           ...data,
           ...(targetApp ? { targetApp } : {}),
@@ -1368,7 +1412,7 @@ Posibles causas:
 
     const response = await fetch(this.getTokenUrl(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.authHeaders(),
       body: JSON.stringify({
         grant_type: 'authorization_code',
         code,
@@ -2350,10 +2394,9 @@ Posibles causas:
       this.log('🔹 Intercambiando access token por sesion completa (exchange)...');
       const response = await fetch(this.getExchangeUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+        headers: this.authHeaders({
           'Authorization': `Bearer ${token}`,
-        },
+        }),
         credentials: 'include',
       });
 
@@ -2412,9 +2455,7 @@ Posibles causas:
     try {
       const response = await fetch(this.getRefreshUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.authHeaders(),
         body: JSON.stringify({ refreshToken }),
         credentials: 'include',
       });

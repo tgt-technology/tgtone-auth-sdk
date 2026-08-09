@@ -1,5 +1,17 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.1.0 (2026-08-08)
+
+### Added — Device ID (sesión por browser-dispositivo)
+
+**Nuevo**: el SDK ahora genera y gestiona un identificador de dispositivo (`deviceId`) para habilitar el modelo de **una sesión por browser-dispositivo** (alineado con el backend core `session-per-device`).
+
+- **`getDeviceId(): string | null`** (público) — devuelve el deviceId de este browser/dispositivo, o `null` si localStorage no está disponible.
+- **Generación automática**: en el constructor se genera un `crypto.randomUUID()` la primera vez y se persiste en `localStorage['tgtone_device_id']`. Se reutiliza en recargas y nuevas instancias del mismo browser.
+- **Header `X-Device-Id`**: se envía en todas las llamadas de autenticación — login, signup, token exchange (OAuth callback), exchange, y refresh. El backend lo usa para crear/validar la sesión correcta.
+
+Este es un cambio **aditivo y retro-compatible**: las apps que no o leen ni envían el header siguen funcionando (el backend tiene fallback legacy). El deviceId permite que dos browsers del mismo usuario tengan sesiones independientes, y que el SSO entre apps del mismo browser comparta una única sesión.
+
 ## 5.0.0 (2026-07-24)
 
 ### Changed (BREAKING — modelo de sesión única)
