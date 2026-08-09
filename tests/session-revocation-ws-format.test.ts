@@ -34,7 +34,7 @@ function createMockJWT(payload: Record<string, unknown>): string {
 }
 
 // Helper: setear token + currentUser, iniciar monitor, simular auth del WS
-function setupAuthenticatedClient(userId: string): { client: TGTAuthClient; simulate: (msg: MSG) => void } {
+function setupAuthenticatedClient(userId: string, sid: string | null = null): { client: TGTAuthClient; simulate: (msg: MSG) => void } {
   const client = new TGTAuthClient({
     coreApiUrl: 'http://localhost:3001',
     appDomain: 'console.tgtone.cl',
@@ -43,10 +43,10 @@ function setupAuthenticatedClient(userId: string): { client: TGTAuthClient; simu
     heartbeatIntervalMs: 60000,
     debug: false,
   } as any);
-  // Token con sub = userId
-  localStorage.setItem('tgtone_auth_token', createMockJWT({ sub: userId }));
+  // Token con sub = userId + sid (si se pasa)
+  localStorage.setItem('tgtone_auth_token', createMockJWT({ sub: userId, ...(sid ? { sid } : {}) }));
   // currentUser se setea al decodificar en checkSession... para test lo forzamos
-  (client as any).currentUser = { sub: userId };
+  (client as any).currentUser = { sub: userId, sid };
   (client as any).currentSession = {};
   client.startSessionMonitor();
   const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
@@ -129,6 +129,27 @@ describe('auth-sdk: procesamiento WS de revocación (formatos de realtime)', () 
   test('Retro-compat: session_terminated (snake_case legacy) sigue funcionando', () => {
     const { simulate } = setupAuthenticatedClient('user-abc');
     simulate({ type: 'session_terminated', payload: { userId: 'user-abc', reason: 'logout' } });
+    expect(redirectSpy).toHaveBeenCalled();
+  });
+
+  test('SESSION_REVOKED dirigido con sessionId COINCIDENTE desloguea', () => {
+    const { simulate } = setupAuthenticatedClient('user-abc', 'session-EDGE');
+    simulate({ type: 'SESSION_REVOKED', payload: { userId: 'user-abc', sessionId: 'session-EDGE', reason: 'logout' } });
+    expect(redirectSpy).toHaveBeenCalled();
+    expect(localStorage.getItem('tgtone_auth_token')).toBeNull();
+  });
+
+  test('SESSION_REVOKED dirigido con sessionId DIFERENTE (otro dispositivo) NO desloguea', () => {
+    const { simulate } = setupAuthenticatedClient('user-abc', 'session-FFX');
+    simulate({ type: 'SESSION_REVOKED', payload: { userId: 'user-abc', sessionId: 'session-EDGE', reason: 'logout' } });
+    // Firefox NO fue cerrado (su sid difiere del del evento Edge) → no redirige ni limpia
+    expect(redirectSpy).not.toHaveBeenCalled();
+    expect(localStorage.getItem('tgtone_auth_token')).not.toBeNull();
+  });
+
+  test('SESSION_REVOKED global (sin sessionId) desloguea aunque haya sid', () => {
+    const { simulate } = setupAuthenticatedClient('user-abc', 'session-FFX');
+    simulate({ type: 'SESSION_REVOKED', payload: { userId: 'user-abc', reason: 'logout' } });
     expect(redirectSpy).toHaveBeenCalled();
   });
 });

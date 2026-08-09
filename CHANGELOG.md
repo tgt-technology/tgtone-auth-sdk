@@ -1,5 +1,19 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.2.0 (2026-08-09)
+
+### Added — Cierre de sesión por dispositivo (revocación dirigida)
+
+**Nuevo**: soporte para cerrar UNA sesión/dispositivo puntual sin afectar los demás (requisito del modelo multi-dispositivo con el cambio `session-per-device-model`).
+
+- **`TGTUser.sid`** (nuevo campo): expose el `sid` (session id) del JWT en `currentUser`, para que la app conozca su propia sesión.
+- **Cierre dirigido en `SESSION_REVOKED`**: si el evento trae `payload.sessionId`, el SDK desloguea SOLO si ese `sessionId` coincide con `currentUser.sid`. Si difiere (el evento es para otro dispositivo), **ignora** y la app sigue logueada.
+- **Revocación global sin cambio**: si `SESSION_REVOKED` NO trae `sessionId` (logout global, suspensión), desloguea todas las sesiones (comportamiento previo). Los eventos de tenant (`SESSION_REVOKED_BULK`) siguen siendo globales por `tenantId`.
+
+**Requiere**: backend core que notifique `sessionId` en la revocación dirigida (`DELETE /sessions/:id`, `/logout/device`) y realtime que propague `sessionId` en el evento. Ver change OpenSpec `session-revoke-by-device`.
+
+**Tests**: 3 nuevos que cubren cierre dirigido coincidente, no coincidente (ignora), y global.
+
 ## 5.1.3 (2026-08-09)
 
 ### Fixed — Procesamiento de eventos WS de revocación (cuadre con tgtone-realtime)

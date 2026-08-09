@@ -44,6 +44,7 @@ export interface JWTPayload {
 
 export interface TGTUser {
   sub: string;
+  sid: string | null;
   email: string;
   emailVerified: boolean;
   name: string;
@@ -949,6 +950,7 @@ export class TGTAuthClient {
           const apiUser = data.user as any;
           const normalizedUser: TGTUser = {
             sub: apiUser.sub || apiUser.id,
+            sid: apiUser.sid ?? null,
             email: apiUser.email,
             emailVerified: apiUser.emailVerified ?? apiUser.email_verified ?? false,
             name: apiUser.name,
@@ -998,6 +1000,7 @@ Posibles causas:
       const session: TGTSession = {
         user: {
           sub: decoded.sub,
+          sid: (decoded as any).sid ?? null,
           email: decoded.email,
           emailVerified: decoded.emailVerified,
           name: decoded.name,
@@ -2067,11 +2070,19 @@ Posibles causas:
             case 'SESSION_TERMINATED': {
               const myUserId = this.currentUser?.sub;
               const revUserId = data.payload?.userId;
+              const mySid = this.currentUser?.sid;
+              // Cierre DIRIGIDO: el evento trae sessionId → solo desloguear si
+              // corresponde a MI sesión. Si es de otra sesión/dispositivo, ignoro.
+              const revSessionId = data.payload?.sessionId;
+              if (revSessionId && mySid && revSessionId !== mySid) {
+                this.log(`🟡 Session Cache: SESSION_REVOKED para otra sesión (${revSessionId}), ignoro`);
+                break;
+              }
               if (myUserId && myUserId === revUserId) {
                 this.log('🚫 Session Cache: sesión revocada instantáneamente');
                 this.stopSessionMonitor();
                 if (data.payload?.reason === 'logout') {
-                  // Logout voluntario desde otra app → redirect silencioso al login
+                  // Logout voluntario (global o dirigido a mi sesión) → redirect al login
                   this.currentUser = null;
                   this.currentSession = null;
                   this.clearStoredToken();
@@ -2431,6 +2442,7 @@ Posibles causas:
 
     this.currentUser = {
       sub: payload.sub,
+      sid: (payload as any).sid ?? null,
       email: payload.email,
       emailVerified: payload.emailVerified,
       name: payload.name,
