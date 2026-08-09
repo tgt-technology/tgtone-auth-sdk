@@ -2313,9 +2313,9 @@ Posibles causas:
     return `${this.authApiBase}/me`;
   }
 
-  /** URL del endpoint logout */
+  /** URL del endpoint logout — DIRIGIDO (cierra SOLO este browser/sesión, no todos los dispositivos). */
   getLogoutUrl(): string {
-    return `${this.authApiBase}/logout`;
+    return `${this.authApiBase}/logout/device`;
   }
 
   /** URL del endpoint refresh */

@@ -215,7 +215,7 @@ describe('TGTAuthClient', () => {
       await authClient.logout();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/auth/logout'),
+        expect.stringContaining('/auth/logout/device'),
         expect.objectContaining({ credentials: 'include' })
       );
     });
@@ -250,7 +250,7 @@ describe('TGTAuthClient', () => {
       await authClient.localLogout();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3001/api/v1/auth/logout',
+        'http://localhost:3001/api/v1/auth/logout/device',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -275,7 +275,7 @@ describe('TGTAuthClient', () => {
       await authClient.localLogout();
 
       expect(global.fetch).not.toHaveBeenCalledWith(
-        expect.stringContaining('/auth/logout'),
+        expect.stringContaining('/auth/logout/device'),
         expect.anything()
       );
       expect(localStorage.getItem('tgtone_auth_token')).toBeNull();
@@ -979,8 +979,8 @@ describe('TGTAuthClient', () => {
         expect(client.getTokenUrl()).toBe('http://localhost:3090/api/v1/auth/token');
       });
 
-      it('getLogoutUrl() → normalized/api/v1/auth/logout', () => {
-        expect(client.getLogoutUrl()).toBe('http://localhost:3090/api/v1/auth/logout');
+      it('getLogoutUrl() → normalized/api/v1/auth/logout/device (dirigido)', () => {
+        expect(client.getLogoutUrl()).toBe('http://localhost:3090/api/v1/auth/logout/device');
       });
 
       it('getRefreshUrl() → normalized/api/v1/auth/refresh', () => {
@@ -1060,7 +1060,7 @@ describe('TGTAuthClient', () => {
         // getLoginUrl() es el mismo método que authorize() usa internamente
         expect(client.getLoginUrl()).toBe('http://localhost:3090/login');
         expect(client.getTokenUrl()).toBe('http://localhost:3090/api/v1/auth/token');
-        expect(client.getLogoutUrl()).toBe('http://localhost:3090/api/v1/auth/logout');
+        expect(client.getLogoutUrl()).toBe('http://localhost:3090/api/v1/auth/logout/device');
       });
 
       it('URLs sin /api duplicado para coreApiUrl ya limpia', () => {

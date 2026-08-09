@@ -1,5 +1,15 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.2.1 (2026-08-09)
+
+### Fixed — Logout de la app es POR BROWSER (no global)
+
+**Corrección**: el botón "Cerrar sesión" de una app hacía logout **GLOBAL** ($POST /logout → borra todas las sesiones de todos los browsers/dispositivos) porque `logoutUser(userId)` borra todo y notifica sin sessionId.
+
+**Fix**: `getLogoutUrl()` ahora apunta a **`POST /logout/device`** (dirigido), que cierra SOLO la sesión del browser/dispositivo actual (`logoutDevice(userId, did, sid)`). Al cerrar sesión desde una app, los **demás browsers quedan intactos**. El logout global queda como acción explícita (botón "Cerrar otras sesiones" en la Security page).
+
+Requiere backend con `POST /logout/device` (ya existía). Ver change OpenSpec `session-revoke-by-device` D10.
+
 ## 5.2.0 (2026-08-09)
 
 ### Added — Cierre de sesión por dispositivo (revocación dirigida)
