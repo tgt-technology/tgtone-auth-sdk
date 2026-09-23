@@ -1,5 +1,20 @@
 # Changelog - @tgtone/auth-sdk
 
+## 5.3.0 (2026-09-22)
+
+### Added — Contrato de error de auth único y aviso de sesión no recuperable
+
+**Problema**: el core anidaba el código de dominio en `message.code` y estampaba un genérico (`UNAUTHORIZED`) en la raíz — justo donde el SDK lo busca —, así que `isRevocationError()` nunca acertaba por HTTP (una sesión revocada no llegaba a la página de bloqueo). Además, `_executeRefresh` descartaba el refresh token ante **cualquier** 401 por status y devolvía `false` sin avisar: un refresh no recuperable dejaba al llamador en un loop de 401 hasta recargar a mano.
+
+**Cambios**:
+
+- **Lectura tolerante del código**: nuevos helpers `extractAuthCode`, `extractAuthMessage` e `isUnrecoverableRefreshCode`, usados en `_executeRefresh`, en la lectura de permisos y en el interceptor (fetch, axios y `handleAuthError`). Si la raíz trae un genérico (`UNAUTHORIZED`/`FORBIDDEN`), el código se lee desde `message.code` (forma previa) → funciona con core viejo y con core nuevo, en cualquier orden de deploy.
+- **El descarte del refresh token se decide por código, no por status**: solo se descarta ante `SESSION_EXPIRED`, `USER_INACTIVE`, `TENANT_INACTIVE` o `INVALID_REFRESH_TOKEN`. Un 5xx (deploy/reinicio) o un 401 sin código legible conservan el token para que el próximo intento pueda renovar.
+- **Nueva señal `onSessionUnrecoverable`** (callback opcional de `TGTAuthConfig`): se dispara cuando un refresh falla y ya no queda refresh token, para que la app mande a re-autenticar. Distinta de `onSessionRevoked` (no implica página de bloqueo). `refreshAccessToken()` sigue devolviendo `boolean` — sin cambios de API pública.
+- Tests nuevos de las dos formas del payload, de los tres casos de descarte y de la señal.
+
+Ver change OpenSpec `fix-auth-error-contract`.
+
 ## 5.2.2 (2026-08-09)
 
 ### Fixed — No desloguearse por un SESSION_REVOKED dirigido a otra sesión (loop nexo)

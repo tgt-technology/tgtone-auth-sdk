@@ -195,6 +195,44 @@ Desde 4.4.0 el SDK coordina el flujo OAuth entre pestañas del mismo origen:
 
 ---
 
+## Contrato de error de auth (v5.3.0)
+
+Los 401 del core traen el código de dominio en la **raíz** del body y `message` como string:
+
+```json
+{ "statusCode": 401, "message": "Sesión expirada o inválida.", "code": "SESSION_EXPIRED" }
+```
+
+El SDK tolera las dos formas mientras core y SDK no estén en la misma versión: si la raíz trae un genérico (`UNAUTHORIZED` / `FORBIDDEN`), lee el código de dominio desde `message.code` (forma previa del core). Los helpers exportados son `extractAuthCode`, `extractAuthMessage` e `isUnrecoverableRefreshCode`.
+
+**Grupos de códigos** y lo que hace el SDK con cada uno:
+
+| Grupo | Códigos | Qué hace el SDK |
+|-------|---------|-----------------|
+| Token expirado | `TOKEN_EXPIRED` | Renueva el token y reintenta la petición una vez |
+| Bloqueo (`REVOCATION_ERROR_CODES`) | `SESSION_EXPIRED`, `USER_INACTIVE`, `TENANT_INACTIVE`, `USER_NOT_FOUND`, `ACCESS_REVOKED`, `APP_SUBSCRIPTION_LOCKED`, `TRIAL_EXPIRED` | Detiene el monitor y lleva a la página de bloqueo |
+| Error de negocio | 401 sin código de token (ej. PIN incorrecto) | No renueva ni bloquea: propaga el error a la app |
+
+### Sesión no recuperable: `onSessionUnrecoverable`
+
+Un refresh rechazado con `INVALID_REFRESH_TOKEN` (el `X-Device-Id` no es el dueño de la sesión: no hay página de bloqueo que mostrar) descarta el token y avisa por callback, para que la app mande a re-autenticar en vez de quedar en un loop de 401. Los códigos del grupo de bloqueo (`SESSION_EXPIRED`, `USER_INACTIVE`, `TENANT_INACTIVE`) también descartan el token, pero marcan la sesión como no recuperable por su vía de siempre (página de bloqueo): no invocan este callback.
+
+```typescript
+const auth = new TGTAuthClient({
+  coreApiUrl: 'https://dev-core.tgtone.cl',
+  onSessionUnrecoverable: (error) => {
+    // La sesión ya no puede renovarse → re-autenticar
+    router.push(`/login?reason=${error?.code ?? 'session_expired'}`);
+  },
+});
+```
+
+- Es distinto de `onSessionRevoked`: **no** implica mostrar la página de bloqueo.
+- Un 5xx (deploy/reinicio) o un 401 sin código legible **no** descartan el token: el próximo intento puede renovar.
+- Es opcional: sin callback, el comportamiento no cambia respecto de versiones anteriores.
+
+---
+
 ## Estructura del usuario
 
 ```typescript

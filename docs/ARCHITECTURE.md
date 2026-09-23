@@ -92,7 +92,10 @@ Browser (auth-sdk)             Session Cache (Linode)          Backend (Elysia)
 ### Detectado en:
 
 1. **WebSocket** — mensaje `session_terminated` / `roles_changed` / `access_revoked` → reacción inmediata
-2. **Refresh JWT** — refresh falla con 401 → ejecuta `onSessionRevoked`
+2. **Refresh JWT** — el refresh falla con 401 y **el código de la respuesta decide** (no el status):
+   - código del grupo de bloqueo (`SESSION_EXPIRED`, `USER_INACTIVE`, `TENANT_INACTIVE`, `USER_NOT_FOUND`, `ACCESS_REVOKED`, `APP_SUBSCRIPTION_LOCKED`, `TRIAL_EXPIRED`) → descarta el refresh token y ejecuta `onSessionRevoked` (o redirige a `/blocked`)
+   - `INVALID_REFRESH_TOKEN` (el `X-Device-Id` no es el dueño de la sesión) → descarta el token y avisa por `onSessionUnrecoverable`: re-login, **sin** página de bloqueo
+   - 5xx (deploy/reinicio) o 401 sin código legible → **conserva** el refresh token: el próximo intento puede renovar
 3. **Interceptor HTTP** — cualquier request 401 con código de revocación → bloquea sesión
 4. **checkSession()** — al cargar la app detecta token inválido
 

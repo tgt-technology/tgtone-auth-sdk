@@ -5,6 +5,12 @@
 
 // Cliente principal
 export { TGTAuthClient, isRevocationError, REVOCATION_ERROR_CODES } from './tgtone-auth-client';
+export {
+  extractAuthCode,
+  extractAuthMessage,
+  isUnrecoverableRefreshCode,
+  UNRECOVERABLE_REFRESH_CODES,
+} from './tgtone-auth-client';
 
 // PKCE Utilities (v3)
 export { generatePKCE, generatePKCEFallback } from './pkce';
@@ -25,6 +31,7 @@ export type {
   SessionResponse,
   AuthErrorCode,
   AuthError,
+  AuthErrorPayload,
   SignupData,
   LoginData,
   AuthResponse,

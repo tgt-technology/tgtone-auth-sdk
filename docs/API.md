@@ -33,6 +33,7 @@ interface TGTAuthConfig {
   onAuthSuccess?: (session: TGTSession) => void;
   onAuthFailure?: (error?: AuthError) => void;
   onSessionRevoked?: (error: AuthError) => void;
+  onSessionUnrecoverable?: (error: AuthError) => void;  // refresh inservible sin bloqueo (INVALID_REFRESH_TOKEN) → re-login
   onPermissionsChanged?: (appKey: string, roles: string[]) => void;
   onAccessRevoked?: (appKey: string, reason: string) => void;
 }

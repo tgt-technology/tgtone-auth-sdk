@@ -20,7 +20,7 @@
  * ```
  */
 
-import { TGTAuthClient, AuthError, AuthErrorCode, isRevocationError } from './tgtone-auth-client';
+import { TGTAuthClient, AuthError, AuthErrorCode, isRevocationError, extractAuthCode, extractAuthMessage, AuthErrorPayload } from './tgtone-auth-client';
 
 /** Key usada por TGTAuthClient para guardar el refresh token en localStorage */
 const REFRESH_TOKEN_KEY = 'tgtone_refresh_token';
@@ -56,7 +56,7 @@ interface AxiosRequestConfigLike {
 interface AxiosErrorLike {
   response?: {
     status?: number;
-    data?: { code?: string; message?: string };
+    data?: AuthErrorPayload;
   };
   config?: AxiosRequestConfigLike;
 }
@@ -165,10 +165,10 @@ export function createAxiosInterceptor(
           // Si aún hay refresh token, fue error de red → reintentar después
         }
 
-        const authError: AuthError | undefined = data?.code && data?.message
+        const authError: AuthError | undefined = extractAuthCode(data)
           ? {
-              code: data.code as AuthErrorCode,
-              message: data.message,
+              code: extractAuthCode(data) as AuthErrorCode,
+              message: extractAuthMessage(data) ?? 'Sesión no válida',
             }
           : undefined;
 
@@ -252,7 +252,7 @@ export function createAuthFetch(
         const clonedResponse = response.clone();
         const errorData = await clonedResponse.json();
         
-        if (errorData?.code === 'TOKEN_EXPIRED') {
+        if (extractAuthCode(errorData) === 'TOKEN_EXPIRED') {
           const refreshed = await authClient.refreshAccessToken();
           if (refreshed) {
             const newToken = authClient.getToken();
@@ -279,10 +279,11 @@ export function createAuthFetch(
           }
         }
 
-        if (errorData?.code && errorData?.message) {
+        const errorCode = extractAuthCode(errorData);
+        if (errorCode) {
           const authError: AuthError = {
-            code: errorData.code as AuthErrorCode,
-            message: errorData.message,
+            code: errorCode as AuthErrorCode,
+            message: extractAuthMessage(errorData) ?? 'Sesión no válida',
           };
 
           if (isRevocationError(authError.code) && handleRevoked) {
@@ -338,13 +339,14 @@ export function handleAuthError(
   }
 
   const { data } = error.response;
-  if (!data?.code || !data?.message) {
+  const code = extractAuthCode(data);
+  if (!code) {
     return false;
   }
 
   const authError: AuthError = {
-    code: data.code as AuthErrorCode,
-    message: data.message,
+    code: code as AuthErrorCode,
+    message: extractAuthMessage(data) ?? 'Sesión no válida',
   };
 
   if (isRevocationError(authError.code)) {

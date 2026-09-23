@@ -106,6 +106,18 @@ export interface TGTAuthConfig {
   onSessionRevoked?: (error: AuthError) => void;
 
   /**
+   * Callback que se ejecuta cuando un refresh falla y la sesión ya no puede
+   * renovarse (el refresh token fue descartado). Distinto de onSessionRevoked:
+   * no implica mostrar la página de bloqueo; sirve para mandar a re-autenticar
+   * en vez de dejar al llamador en un loop de 401.
+   *
+   * Si no se proporciona, el comportamiento no cambia respecto de hoy.
+   *
+   * @optional
+   */
+  onSessionUnrecoverable?: (error?: AuthError) => void;
+
+  /**
    * OAuth 2.0 PKCE: Client ID for this application (Application.key)
    * Required for OAuth PKCE flow.
    * @example 'baco'
@@ -401,10 +413,11 @@ export interface UserActionResult {
 // CLIENTE SSO
 // ============================================================================
 
-type InternalAuthConfig = Omit<Required<TGTAuthConfig>, 'onSessionRevoked' | 'onAuthSuccess' | 'onAuthFailure' | 'onPermissionsStale' | 'onPermissionsChanged' | 'onAccessRevoked' | 'appKey' | 'clientId' | 'redirectUri' | 'sessionCacheUrl' | 'popupAuthEnabled'> & {
+type InternalAuthConfig = Omit<Required<TGTAuthConfig>, 'onSessionRevoked' | 'onSessionUnrecoverable' | 'onAuthSuccess' | 'onAuthFailure' | 'onPermissionsStale' | 'onPermissionsChanged' | 'onAccessRevoked' | 'appKey' | 'clientId' | 'redirectUri' | 'sessionCacheUrl' | 'popupAuthEnabled'> & {
   onAuthSuccess: (session: TGTSession) => void;
   onAuthFailure?: (error?: AuthError) => void;
   onSessionRevoked?: (error: AuthError) => void;
+  onSessionUnrecoverable?: (error?: AuthError) => void;
   onPermissionsStale?: () => void;
   onPermissionsChanged?: (app: string, newRoles: string[]) => void;
   onAccessRevoked?: (app: string, reason: string) => void;
@@ -1548,14 +1561,13 @@ Posibles causas:
         // Verificar si es un error de revocación de sesión
         try {
           const errorData = await response.json();
-          if (errorData.code && errorData.message) {
-            const errorCode = errorData.code as AuthErrorCode;
-            if (isRevocationError(errorCode)) {
-              this.log('❌ Permisos rechazados - sesión revocada:', errorCode);
-              this.stopHeartbeat();
-              this.handleSessionRevoked({ code: errorCode, message: errorData.message });
-              return null;
-            }
+          const errorCode = extractAuthCode(errorData);
+          if (errorCode && isRevocationError(errorCode as AuthErrorCode)) {
+            const message = extractAuthMessage(errorData) ?? 'Sesión no válida';
+            this.log('❌ Permisos rechazados - sesión revocada:', errorCode);
+            this.stopHeartbeat();
+            this.handleSessionRevoked({ code: errorCode as AuthErrorCode, message });
+            return null;
           }
         } catch {
           // No se pudo parsear el error
@@ -2565,11 +2577,9 @@ Posibles causas:
         let authError: AuthError | undefined;
         try {
           const errorData = await response.json();
-          if (errorData.code && errorData.message) {
-            authError = {
-              code: errorData.code as AuthErrorCode,
-              message: errorData.message,
-            };
+          const code = extractAuthCode(errorData);
+          if (code) {
+            authError = { code: code as AuthErrorCode, message: extractAuthMessage(errorData) ?? 'Sesión no válida' };
           }
         } catch {
           // ignore parse errors
@@ -2583,13 +2593,17 @@ Posibles causas:
           return false;
         }
 
-        this.log('❌ Refresh falló (HTTP', response.status, ')');
-        // Solo borrar refresh token en 401 (token inválido/revocado).
-        // En 5xx (502/503 por deploy/restart) mantener el refresh token
-        // para que el próximo heartbeat pueda reintentar.
-        if (response.status === 401) {
+        // El refresh token se descarta solo si el código dice que ya no sirve.
+        // Un 5xx (deploy/reinicio) o un 401 sin código son transitorios: se
+        // conserva el token para que el próximo intento pueda renovar.
+        if (authError && isUnrecoverableRefreshCode(authError.code)) {
+          this.log('❌ Refresh rechazado - sesión no recuperable:', authError.code);
           this.clearRefreshToken();
+          this.notifySessionUnrecoverable(authError);
+          return false;
         }
+
+        this.log('❌ Refresh falló (HTTP', response.status, ')');
         return false;
       }
 
@@ -2816,6 +2830,20 @@ Posibles causas:
     }
   }
 
+  /**
+   * Avisa al llamador que la sesión no puede renovarse, para que mande a
+   * re-autenticar en vez de quedarse en un loop de 401.
+   */
+  private notifySessionUnrecoverable(error: AuthError): void {
+    if (!this.config.onSessionUnrecoverable) return;
+
+    try {
+      this.config.onSessionUnrecoverable(error);
+    } catch (callbackError) {
+      this.log('⚠️ onSessionUnrecoverable lanzó un error:', callbackError);
+    }
+  }
+
   private handleNoSession(error?: AuthError): void {
     if (error && isRevocationError(error.code)) {
       this.handleSessionRevoked(error);
@@ -2882,6 +2910,88 @@ export const REVOCATION_ERROR_CODES: AuthErrorCode[] = [
  */
 export function isRevocationError(code: AuthErrorCode): boolean {
   return REVOCATION_ERROR_CODES.includes(code);
+}
+
+/**
+ * Códigos genéricos: solo reflejan el status HTTP, no un dominio de error.
+ */
+const GENERIC_ERROR_CODES = ['UNAUTHORIZED', 'FORBIDDEN'];
+
+/**
+ * Códigos con los que un refresh rechazado deja el refresh token inservible.
+ * Un 5xx o un 401 sin código NO están acá: son fallos transitorios
+ * (deploy, reinicio, respuesta sin body) y el token se conserva.
+ */
+export const UNRECOVERABLE_REFRESH_CODES = [
+  'SESSION_EXPIRED',
+  'USER_INACTIVE',
+  'TENANT_INACTIVE',
+  'INVALID_REFRESH_TOKEN',
+] as const;
+
+/**
+ * Payload de error del core, en cualquiera de sus dos formas:
+ * código de dominio en la raíz (`{code, message}`) o anidado
+ * (`{code: 'UNAUTHORIZED', message: {code, message}}`).
+ */
+export interface AuthErrorPayload {
+  code?: unknown;
+  message?: unknown;
+}
+
+/**
+ * Resuelve el código de dominio de un error de auth tolerando las dos formas
+ * del payload, para que cualquier orden de deploy funcione (SDK nuevo contra
+ * core viejo y viceversa).
+ *
+ * Devuelve el código tal como lo emitió el core (`string`): el conjunto de
+ * códigos es abierto y no todos los que viajan son de decisión
+ * (`AuthErrorCode` es el subconjunto con el que el SDK decide).
+ *
+ * @param payload Body del error de auth, en cualquier forma
+ * @returns Código de dominio si lo hay; si no, el genérico del status
+ */
+export function extractAuthCode(payload: AuthErrorPayload | null | undefined): string | undefined {
+  if (!payload) return undefined;
+
+  const rootCode = typeof payload.code === 'string' ? payload.code : undefined;
+  if (rootCode && !GENERIC_ERROR_CODES.includes(rootCode)) {
+    return rootCode;
+  }
+
+  const nested = payload.message;
+  if (nested && typeof nested === 'object') {
+    const nestedCode = (nested as AuthErrorPayload).code;
+    if (typeof nestedCode === 'string') return nestedCode;
+  }
+
+  return rootCode;
+}
+
+/**
+ * Resuelve el mensaje humano de un error de auth, tolerando `message` como
+ * string (forma nueva del core) o como objeto anidado (forma previa).
+ */
+export function extractAuthMessage(payload: AuthErrorPayload | null | undefined): string | undefined {
+  if (!payload) return undefined;
+
+  const message = payload.message;
+  if (typeof message === 'string') return message;
+
+  if (message && typeof message === 'object') {
+    const nestedMessage = (message as AuthErrorPayload).message;
+    if (typeof nestedMessage === 'string') return nestedMessage;
+  }
+
+  return undefined;
+}
+
+/**
+ * Indica si el código de un refresh rechazado significa que el refresh token
+ * almacenado ya no sirve, o sea que corresponde descartarlo.
+ */
+export function isUnrecoverableRefreshCode(code: string | undefined): boolean {
+  return typeof code === 'string' && (UNRECOVERABLE_REFRESH_CODES as readonly string[]).includes(code);
 }
 
 // ============================================================================
