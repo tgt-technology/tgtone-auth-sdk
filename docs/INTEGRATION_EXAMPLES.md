@@ -90,7 +90,9 @@ const authClient = new TGTAuthClient({
   coreApiUrl: import.meta.env.VITE_CORE_API_URL || 'https://dev-core.tgtone.cl',
   appDomain: window.location.host,
   appKey: import.meta.env.VITE_APP_KEY, // Requerido en dev
-  heartbeatIntervalMs: 5 * 60 * 1000, // Refresh proactivo JWT (default)
+  heartbeatIntervalMs: 60 * 1000, // Refresh proactivo JWT: con un access token de 15 min, el default de 5 min
+                                  // deja sólo ~3 chequeos por vida del token; 60 s mantiene el refresh por
+                                  // delante del vencimiento (convención verificada en las apps de la suite)
   debug: import.meta.env.DEV,
 });
 

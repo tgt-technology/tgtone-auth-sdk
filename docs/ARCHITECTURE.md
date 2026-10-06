@@ -171,6 +171,15 @@ El backend setea dos cookies HttpOnly en su dominio (dev-core.tgtone.cl / core.t
 | `tgtone_session` | 15 min | JWT access token para auto-authorize en GET /login |
 | `tgtone_refresh` | 30 días | Refresh token para auto-authorize cuando `tgtone_session` expira |
 
+> ⚠️ **Requisito del backend (verificado, 2026-10)**: para que `tgtone_refresh` exista de verdad en el navegador, el
+> backend tiene que emitir **un header `Set-Cookie` por cookie**. Si las manda con
+> `set.headers['Set-Cookie'] = [session, refresh]`, Bun las serializa como **UN header comma-joined** y el navegador
+> guarda sólo la primera (`tgtone_session`), descartando `tgtone_refresh` **sin error y en cualquier dominio**. Con
+> esa cookie ausente los pasos 3 del auto-authorize y el fallback de `POST /api/v1/auth/token` no aplican nunca: el
+> re-login sale sin refresh token y la sesión muere al vencer el access token (ciclo de ~15 min). En Elysia se
+> resuelve con `set.cookie = { … }` (o `new Headers().append()` cuando se devuelve un `Response` crudo). Comprobación
+> en un comando: `curl -si -X POST <core>/api/v1/auth/token … | grep -ci '^set-cookie:'` → **1 = roto, 2 = correcto**.
+
 **Flujo SSO (auto-authorize):**
 1. App A redirige al browser a `core/login?client_id=...&redirect_uri=...&code_challenge=...`
 2. Backend lee `tgtone_session` → si válida, upsert Session (agrega app a `activeApps`), genera auth code y redirige (sin mostrar login)
